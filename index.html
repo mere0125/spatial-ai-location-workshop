@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="A spatial model of one student's attention at 11:47 PM." />
+    <title>11:47 PM — Where My Attention Goes</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="desk">
+      <canvas id="world" aria-label="An animated map of thoughts moving between competing attractions. Click anywhere to inspect it."></canvas>
+
+      <header class="title-note">
+        <span class="time">11:47 PM</span>
+        <h1>where my<br />attention goes</h1>
+        <p>This is not a map of my room. It is a map of everything pulling at me while I am supposed to be working.</p>
+        <div class="key"><span class="thought-mark"></span> a thought <span class="pull-mark"></span> a pull</div>
+      </header>
+
+      <section class="controls" aria-label="Simulation controls">
+        <button id="play-button" type="button">pause the noise</button>
+        <button id="add-wanderer" type="button">+ another thought</button>
+        <button id="stir-button" type="button">shuffle my brain</button>
+        <button id="reset-button" type="button">start the night over</button>
+        <label for="speed-range">brain speed <input id="speed-range" type="range" min="0.4" max="2" value="1" step="0.2" /> <output id="speed-output">1×</output></label>
+      </section>
+
+      <section class="notebook" aria-label="Four location questions">
+        <div class="paperclip" aria-hidden="true"></div>
+        <div class="notebook-head">
+          <div><small>LOCATION WORKSHOP / 04 QUESTIONS</small><h2>ask my brain where things are</h2></div>
+          <span id="sim-status">currently overthinking</span>
+        </div>
+
+        <nav class="tabs" role="tablist" aria-label="Location questions">
+          <button class="tab active" data-tab="object" role="tab" aria-selected="true">① where is this thought?</button>
+          <button class="tab" data-tab="occupancy" role="tab" aria-selected="false">② what is here?</button>
+          <button class="tab" data-tab="frame" role="tab" aria-selected="false">③ where is it from there?</button>
+          <button class="tab" data-tab="description" role="tab" aria-selected="false">④ find the place I mean</button>
+        </nav>
+
+        <div class="answers">
+          <section class="view active" data-view="object">
+            <label for="object-select">pick one thing circling in my head</label>
+            <select id="object-select"></select>
+            <div id="object-result" class="result"></div>
+          </section>
+
+          <section class="view" data-view="occupancy">
+            <p class="instruction">Click directly on the map, or be annoyingly precise:</p>
+            <div class="xy-row">
+              <label>x <input id="query-x" type="number" min="0" max="100" value="50" /></label>
+              <label>y <input id="query-y" type="number" min="0" max="80" value="40" /></label>
+              <button id="occupancy-query" type="button">look here</button>
+            </div>
+            <div id="occupancy-result" class="result"></div>
+          </section>
+
+          <section class="view" data-view="frame">
+            <div class="two-selects">
+              <label for="occupant-select">find<select id="occupant-select"></select></label>
+              <label for="anchor-select">from the point of view of<select id="anchor-select"></select></label>
+            </div>
+            <div id="frame-result" class="result"></div>
+          </section>
+
+          <section class="view" data-view="description">
+            <label for="description-input">describe it the way a tired person would</label>
+            <div class="search-row">
+              <input id="description-input" type="text" placeholder="somewhere between a good idea and panic" />
+              <button id="resolve-button" type="button">find it</button>
+            </div>
+            <div class="suggestions">
+              <button type="button">somewhere between a good idea and panic</button>
+              <button type="button">close to home but still hungry</button>
+              <button type="button">as far from my phone as possible</button>
+              <button type="button">where all my thoughts are stuck</button>
+            </div>
+            <div id="description-result" class="result"></div>
+          </section>
+        </div>
+      </section>
+
+      <div id="map-tooltip" class="map-tooltip" hidden></div>
+      <p class="signature">Meredith Cui · Spatial AI · location / occupancy</p>
+    </main>
+    <script src="app.js"></script>
+  </body>
+</html>
