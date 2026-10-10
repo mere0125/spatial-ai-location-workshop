@@ -55,13 +55,16 @@ def in_bounds(points):
 def parse_height(data):
     raw = data.get("height", "").replace(" m", "").replace("m", "")
     try:
-        return max(4, min(145, float(raw)))
+        return max(4, min(145, float(raw))), "osm-height"
     except ValueError:
         pass
     try:
-        return max(4, min(145, float(data.get("building:levels", 0)) * 3.3 + 2.5))
+        levels = float(data.get("building:levels", 0))
+        if levels > 0:
+            return max(4, min(145, levels * 3.3 + 2.5)), "levels-estimate"
     except ValueError:
-        return 16
+        pass
+    return 16, "schematic-default"
 
 
 buildings, routes, grounds = [], [], []
@@ -72,10 +75,12 @@ for way in root.findall("way"):
         continue
     coords = [xy(lat, lon) for lat, lon in points]
     if "building" in data and len(coords) >= 4:
+        height, height_source = parse_height(data)
         buildings.append({
             "id": int(way.attrib["id"]),
             "name": data.get("name", ""),
-            "height": round(parse_height(data), 1),
+            "height": round(height, 1),
+            "heightSource": height_source,
             "kind": data.get("building", "yes"),
             "points": coords,
         })

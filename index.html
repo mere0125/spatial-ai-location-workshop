@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <meta name="description" content="Where My Attention Goes — a spatial model of divided attention during one studio night." />
     <title>Where My Attention Goes</title>
-    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="styles.css?v=20261010-4" />
   </head>
   <body>
     <main class="atlas">
@@ -18,11 +18,11 @@
         <div class="body-key"><span></span><p><b>BODY / ORIGIN</b><br />Avery Hall, GSAPP studio</p></div>
 
         <section class="legend" aria-label="Attention destinations">
-          <p><i class="red">01</i><span><b>deadline</b>Avery Hall</span></p>
-          <p><i class="blue">02</i><span><b>research</b>Butler Library</span></p>
-          <p><i class="green">03</i><span><b>food</b>John Jay Hall</span></p>
-          <p><i class="violet">04</i><span><b>home</b>116th Street subway</span></p>
-          <p><i class="yellow">05</i><span><b>one good idea</b>Low Library</span></p>
+          <p><i class="red">—</i><span><b>deadline</b>Avery Hall</span></p>
+          <p><i class="blue">—</i><span><b>research</b>Butler Library</span></p>
+          <p><i class="green">—</i><span><b>food</b>John Jay Hall</span></p>
+          <p><i class="violet">—</i><span><b>home</b>116th Street subway</span></p>
+          <p><i class="yellow">—</i><span><b>one good idea</b>Low Library</span></p>
         </section>
 
         <p id="live-sentence" class="live-sentence" aria-live="polite">Right now, “section model” is being pulled toward the deadline.</p>
@@ -41,6 +41,14 @@
         </div>
         <div class="north" aria-hidden="true"><b>↑</b><span>N</span></div>
         <p class="map-note">drag to rotate · scroll to zoom · click to inspect · geometry © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap contributors</a></p>
+
+        <section class="model-strip" aria-label="Model calibration and live measurements">
+          <div><small>MAP EVIDENCE</small><strong>OSM footprints + paths</strong><span>local metric coordinates</span></div>
+          <div><small>ATTENTION DISPERSION</small><strong id="dispersion">—</strong><span>RMS distance from my body</span></div>
+          <div><small>SPLIT INDEX</small><strong id="split-index">—</strong><span>0 focused — 1 evenly divided</span></div>
+          <div><small>STRONGEST PULL</small><strong id="strongest-pull">—</strong><span>most occupied destination</span></div>
+          <p>Buildings are geographic evidence. Attention fields are an authored conceptual model, not measured cognition.</p>
+        </section>
 
         <aside id="place-card" class="place-card" aria-live="polite">
           <button id="close-place" type="button" aria-label="Close location detail">×</button>
@@ -99,7 +107,7 @@
         </div>
       </section>
     </main>
-    <script src="campus-data.js"></script>
-    <script src="app.js"></script>
+    <script src="campus-data.js?v=20261010-4"></script>
+    <script src="app.js?v=20261010-4"></script>
   </body>
 </html>

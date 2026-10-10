@@ -3,7 +3,7 @@ const ctx = canvas.getContext("2d");
 const data = window.CAMPUS_DATA;
 
 const palette = {
-  ink: "#24231f", roof: "#f7f3e8", roofDim: "#d1cdc3", side: "#aaa79f",
+  ink: "#24231f", roof: "#f8f4e9", roofDim: "#e2ded4", side: "rgba(36,35,31,.10)",
   line: "rgba(36,35,31,.18)", road: "rgba(36,35,31,.28)", path: "rgba(36,35,31,.13)",
   red: "#d94b38", blue: "#526fc1", green: "#4b9b73", violet: "#8f69ad", yellow: "#d6a915",
 };
@@ -162,6 +162,18 @@ function drawFields() {
 function anchorForBuilding(b) {
   return anchors.find(a => distance(a.point, b.center) < 18);
 }
+function hatchPolygon(points, color, spacing = 7, alpha = .45) {
+  const xs = points.map(p => p.x), ys = points.map(p => p.y);
+  const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
+  ctx.save();
+  ctx.beginPath(); points.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)); ctx.closePath(); ctx.clip();
+  ctx.strokeStyle = rgba(color, alpha); ctx.lineWidth = .65;
+  const reach = maxY - minY;
+  for (let x = minX - reach; x < maxX + reach; x += spacing) {
+    ctx.beginPath(); ctx.moveTo(x, maxY + 2); ctx.lineTo(x + reach, minY - 2); ctx.stroke();
+  }
+  ctx.restore();
+}
 function drawBuildings() {
   const sorted = [...data.buildings].sort((a, b) => {
     const ay = project(a.center).y, by = project(b.center).y;
@@ -175,12 +187,17 @@ function drawBuildings() {
     for (let i = 0; i < base.length - 1; i++) {
       const next = i + 1;
       ctx.beginPath(); ctx.moveTo(base[i].x, base[i].y); ctx.lineTo(base[next].x, base[next].y); ctx.lineTo(roof[next].x, roof[next].y); ctx.lineTo(roof[i].x, roof[i].y); ctx.closePath();
-      ctx.fillStyle = anchor ? rgba(anchor.color, .28) : palette.side; ctx.fill();
-      ctx.strokeStyle = "rgba(36,35,31,.38)"; ctx.lineWidth = .6; ctx.stroke();
+      ctx.fillStyle = anchor ? rgba(anchor.color, .10) : palette.side; ctx.fill();
+      ctx.strokeStyle = "rgba(36,35,31,.42)"; ctx.lineWidth = .55; ctx.stroke();
     }
     ctx.beginPath(); roof.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)); ctx.closePath();
-    ctx.fillStyle = anchor ? rgba(anchor.color, .78) : (b.name ? palette.roof : palette.roofDim); ctx.globalAlpha = b.name ? 1 : .86; ctx.fill(); ctx.globalAlpha = 1;
-    ctx.strokeStyle = anchor ? rgba(anchor.color, .95) : "rgba(36,35,31,.58)"; ctx.lineWidth = anchor ? 1.25 : .65; ctx.stroke();
+    ctx.fillStyle = b.name ? palette.roof : palette.roofDim; ctx.globalAlpha = b.name ? .88 : .64; ctx.fill(); ctx.globalAlpha = 1;
+    ctx.strokeStyle = anchor ? anchor.color : "rgba(36,35,31,.62)"; ctx.lineWidth = anchor ? 1.15 : .65; ctx.stroke();
+    if (anchor) hatchPolygon(roof, anchor.color, 6, .62);
+    else if (b.name) hatchPolygon(roof, "#24231f", 10, .12);
+    ctx.save(); ctx.translate(.8, .45);
+    ctx.beginPath(); roof.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)); ctx.closePath();
+    ctx.strokeStyle = "rgba(217,75,56,.12)"; ctx.lineWidth = .55; ctx.stroke(); ctx.restore();
     renderedBuildings.push({ building: b, roof, base });
   }
 }
@@ -211,9 +228,8 @@ function drawAttentionTethers() {
     ctx.strokeStyle = rgba(anchor.color, selected ? .9 : .28); ctx.lineWidth = selected ? 2.2 : .9;
     ctx.setLineDash(selected ? [] : [2, 4]); ctx.stroke(); ctx.setLineDash([]);
   });
-  ctx.strokeStyle = palette.ink; ctx.lineWidth = 1.2;
-  ctx.beginPath(); ctx.arc(origin.x, origin.y, 6, 0, Math.PI * 2); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(origin.x - 10, origin.y); ctx.lineTo(origin.x + 10, origin.y); ctx.moveTo(origin.x, origin.y - 10); ctx.lineTo(origin.x, origin.y + 10); ctx.stroke();
+  ctx.strokeStyle = palette.ink; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(origin.x - 10, origin.y); ctx.lineTo(origin.x + 10, origin.y); ctx.stroke();
   ctx.font = "700 8px Courier New"; ctx.fillStyle = palette.ink; ctx.fillText("BODY / AVERY", origin.x + 12, origin.y - 9);
 }
 function drawThoughts() {
@@ -221,8 +237,8 @@ function drawThoughts() {
   const selectedId = selectedValue.startsWith("thought:") ? selectedValue.split(":")[1] : "";
   for (const t of thoughts) {
     const anchor = anchors.find(a => a.id === t.targetId), p = project(t, 8 + Math.sin(elapsed * .003 + t.phase) * 3), selected = t.id === selectedId;
-    ctx.fillStyle = anchor.color; ctx.strokeStyle = palette.ink; ctx.lineWidth = selected ? 1.5 : .8;
-    ctx.beginPath(); ctx.arc(p.x, p.y, selected ? 5 : 3, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.strokeStyle = anchor.color; ctx.lineWidth = selected ? 3 : 2;
+    ctx.beginPath(); ctx.moveTo(p.x - (selected ? 7 : 4), p.y); ctx.lineTo(p.x + (selected ? 7 : 4), p.y); ctx.stroke();
     if (selected) {
       ctx.font = "700 8px Courier New"; const width = ctx.measureText(t.name.toUpperCase()).width + 12;
       ctx.fillStyle = "rgba(248,245,237,.94)"; ctx.fillRect(p.x + 9, p.y - 16, width, 15);
@@ -234,7 +250,8 @@ function drawSelected() {
   if (!selectedPoint) return;
   const p = project(selectedPoint, 3), age = (performance.now() - selectedPoint.time) % 1200;
   ctx.strokeStyle = rgba(palette.yellow, .85 - age / 1600); ctx.lineWidth = 1.4; ctx.setLineDash([3, 4]);
-  ctx.beginPath(); ctx.arc(p.x, p.y, 8 + age * .012, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
+  const half = 8 + age * .018;
+  ctx.beginPath(); ctx.moveTo(p.x - half, p.y); ctx.lineTo(p.x + half, p.y); ctx.stroke(); ctx.setLineDash([]);
 }
 function render(now) {
   const dt = Math.min(now - lastFrame, 35); lastFrame = now;
@@ -315,6 +332,20 @@ function updateLiveResults() {
     const sx = `${dx >= 0 ? "+" : ""}${Math.round(dx)}`, sy = `${dy >= 0 ? "+" : ""}${Math.round(dy)}`;
     document.querySelector("#frame-result").innerHTML = `<strong>${compass(dx, dy)} of ${anchor.name}</strong>${thought.name} is ${Math.round(Math.hypot(dx, dy))} m from this local origin.<br><small>local vector x=${sx} m · y=${sy} m</small>`;
   }
+
+  const body = building("Avery Hall").center;
+  const rms = Math.sqrt(thoughts.reduce((sum, item) => sum + distance(item, body) ** 2, 0) / thoughts.length);
+  const counts = anchors.map(destination => thoughts.filter(item => item.targetId === destination.id).length);
+  const entropy = -counts.reduce((sum, count) => {
+    if (!count) return sum;
+    const probability = count / thoughts.length;
+    return sum + probability * Math.log(probability);
+  }, 0) / Math.log(anchors.length);
+  const strongestCount = Math.max(...counts);
+  const strongest = anchors.filter((_, index) => counts[index] === strongestCount).map(item => item.short).join(" + ");
+  document.querySelector("#dispersion").textContent = `${Math.round(rms)} m`;
+  document.querySelector("#split-index").textContent = entropy.toFixed(2);
+  document.querySelector("#strongest-pull").textContent = strongest;
 }
 function inspect(point, preferredBuilding = null) {
   selectedPoint = { ...point, time: performance.now() };
@@ -323,7 +354,8 @@ function inspect(point, preferredBuilding = null) {
   const occupants = [b?.name, ...occ.fields.map(f => f.note), ...occ.thoughts.map(t => t.name)].filter(Boolean);
   document.querySelector("#occupancy-result").innerHTML = `<strong>${b?.name || info.title}</strong>${occupants.length ? occupants.join(" · ") : "No named occupant at this point."}<br><small>${coordinateText(point)}</small>`;
   document.querySelector("#place-name").textContent = b?.name || info.title;
-  document.querySelector("#place-detail").textContent = b ? `${Math.round(b.height)} m mapped height · ${info.detail}` : info.detail;
+  const heightLabels = { "osm-height": "OSM height", "levels-estimate": "height estimated from OSM levels", "schematic-default": "schematic height (source missing)" };
+  document.querySelector("#place-detail").textContent = b ? `${Math.round(b.height)} m ${heightLabels[b.heightSource] || "schematic height"} · ${info.detail}` : info.detail;
   document.querySelector("#place-coordinate").textContent = coordinateText(point);
   document.querySelector("#place-occupancy").textContent = occupants.slice(1).join(" · ") || "open campus ground";
   document.querySelector("#place-card").classList.add("open");
