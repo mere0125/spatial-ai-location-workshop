@@ -2,89 +2,105 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="A spatial model of one student's attention at 11:47 PM." />
-    <title>11:47 PM — Where My Attention Goes</title>
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="description" content="An emotional and architectural map of Columbia University's Morningside campus after dark." />
+    <title>Campus After Dark — An Attention Atlas</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <main class="desk">
-      <canvas id="world" aria-label="An animated map of thoughts moving between competing attractions. Click anywhere to inspect it."></canvas>
+    <main class="atlas">
+      <canvas id="map" aria-label="Three-dimensional Columbia campus map. Drag to rotate, scroll to zoom, or click a building to inspect it."></canvas>
 
-      <header class="title-note">
-        <span class="time">11:47 PM</span>
-        <h1>where my<br />attention goes</h1>
-        <p>This is not a map of my room. It is a map of everything pulling at me while I am supposed to be working.</p>
-        <div class="key"><span class="thought-mark"></span> a thought <span class="pull-mark"></span> a pull</div>
+      <header class="masthead">
+        <p class="index">SPATIAL AI / FIELD STUDY 05</p>
+        <h1>CAMPUS<br />AFTER <i>DARK</i></h1>
+        <p class="dek">An accurate map of buildings.<br />An unreliable map of attention.</p>
       </header>
 
-      <section class="controls" aria-label="Simulation controls">
-        <button id="play-button" type="button">pause the noise</button>
-        <button id="add-wanderer" type="button">+ another thought</button>
-        <button id="stir-button" type="button">shuffle my brain</button>
-        <button id="reset-button" type="button">start the night over</button>
-        <label for="speed-range">brain speed <input id="speed-range" type="range" min="0.4" max="2" value="1" step="0.2" /> <output id="speed-output">1×</output></label>
+      <section class="map-controls" aria-label="Map controls">
+        <span id="clock">11:47:00 PM</span>
+        <button id="play" type="button">PAUSE THOUGHTS</button>
+        <button id="add" type="button">+ ONE THOUGHT</button>
+        <button id="rotate-left" type="button" aria-label="Rotate map left">↶</button>
+        <button id="rotate-right" type="button" aria-label="Rotate map right">↷</button>
+        <button id="reset-view" type="button">RESET VIEW</button>
       </section>
 
-      <section class="notebook" aria-label="Four location questions">
-        <div class="paperclip" aria-hidden="true"></div>
-        <div class="notebook-head">
-          <div><small>LOCATION WORKSHOP / 04 QUESTIONS</small><h2>ask my brain where things are</h2></div>
-          <span id="sim-status">currently overthinking</span>
+      <div class="north" aria-hidden="true"><span>N</span><b>↑</b></div>
+
+      <section class="legend" aria-label="Attention layer legend">
+        <p><span class="swatch studio"></span><b>studio / deadline</b></p>
+        <p><span class="swatch research"></span><b>research rabbit hole</b></p>
+        <p><span class="swatch food"></span><b>food</b></p>
+        <p><span class="swatch exit"></span><b>way home</b></p>
+        <p><span class="swatch idea"></span><b>one good idea</b></p>
+      </section>
+
+      <aside id="place-card" class="place-card" aria-live="polite">
+        <button id="close-place" type="button" aria-label="Close location detail">×</button>
+        <p class="index">SELECTED LOCATION</p>
+        <h2 id="place-name">Avery Hall</h2>
+        <p id="place-detail">GSAPP studio · deadline field</p>
+        <dl><div><dt>COORDINATE</dt><dd id="place-coordinate">—</dd></div><div><dt>OCCUPANCY</dt><dd id="place-occupancy">—</dd></div></dl>
+      </aside>
+
+      <section class="instrument" aria-label="Location query instrument">
+        <div class="instrument-title">
+          <p class="index">FOUR WAYS TO ASK WHERE</p>
+          <h2>Location instrument</h2>
         </div>
 
-        <nav class="tabs" role="tablist" aria-label="Location questions">
-          <button class="tab active" data-tab="object" role="tab" aria-selected="true">① where is this thought?</button>
-          <button class="tab" data-tab="occupancy" role="tab" aria-selected="false">② what is here?</button>
-          <button class="tab" data-tab="frame" role="tab" aria-selected="false">③ where is it from there?</button>
-          <button class="tab" data-tab="description" role="tab" aria-selected="false">④ find the place I mean</button>
-        </nav>
+        <div class="tabs" role="tablist" aria-label="Location query modes">
+          <button class="tab active" data-tab="object" role="tab" aria-selected="true"><b>01</b> THING → WHERE</button>
+          <button class="tab" data-tab="occupancy" role="tab" aria-selected="false"><b>02</b> WHERE → WHAT</button>
+          <button class="tab" data-tab="frame" role="tab" aria-selected="false"><b>03</b> RELATIVE TO</button>
+          <button class="tab" data-tab="description" role="tab" aria-selected="false"><b>04</b> WORDS → PLACE</button>
+        </div>
 
-        <div class="answers">
-          <section class="view active" data-view="object">
-            <label for="object-select">pick one thing circling in my head</label>
-            <select id="object-select"></select>
-            <div id="object-result" class="result"></div>
-          </section>
+        <div class="view active" data-view="object">
+          <label for="object-select">Follow</label>
+          <select id="object-select"></select>
+          <div id="object-result" class="result" aria-live="polite"></div>
+        </div>
 
-          <section class="view" data-view="occupancy">
-            <p class="instruction">Click directly on the map, or be annoyingly precise:</p>
-            <div class="xy-row">
-              <label>x <input id="query-x" type="number" min="0" max="100" value="50" /></label>
-              <label>y <input id="query-y" type="number" min="0" max="80" value="40" /></label>
-              <button id="occupancy-query" type="button">look here</button>
-            </div>
-            <div id="occupancy-result" class="result"></div>
-          </section>
+        <div class="view" data-view="occupancy">
+          <p class="hint">Click anywhere on the model, or enter local campus coordinates.</p>
+          <div class="coordinate-query">
+            <label>east <input id="query-x" type="number" value="0" /></label>
+            <label>north <input id="query-y" type="number" value="0" /></label>
+            <button id="occupancy-query" type="button">INSPECT</button>
+          </div>
+          <div id="occupancy-result" class="result" aria-live="polite"></div>
+        </div>
 
-          <section class="view" data-view="frame">
-            <div class="two-selects">
-              <label for="occupant-select">find<select id="occupant-select"></select></label>
-              <label for="anchor-select">from the point of view of<select id="anchor-select"></select></label>
-            </div>
-            <div id="frame-result" class="result"></div>
-          </section>
+        <div class="view" data-view="frame">
+          <div class="double-select">
+            <label>Locate<select id="occupant-select"></select></label>
+            <label>from<select id="anchor-select"></select></label>
+          </div>
+          <div id="frame-result" class="result" aria-live="polite"></div>
+        </div>
 
-          <section class="view" data-view="description">
-            <label for="description-input">describe it the way a tired person would</label>
-            <div class="search-row">
-              <input id="description-input" type="text" placeholder="somewhere between a good idea and panic" />
-              <button id="resolve-button" type="button">find it</button>
-            </div>
-            <div class="suggestions">
-              <button type="button">somewhere between a good idea and panic</button>
-              <button type="button">close to home but still hungry</button>
-              <button type="button">as far from my phone as possible</button>
-              <button type="button">where all my thoughts are stuck</button>
-            </div>
-            <div id="description-result" class="result"></div>
-          </section>
+        <div class="view" data-view="description">
+          <label for="description-input">Describe a place the way you actually think about it</label>
+          <div class="description-query"><input id="description-input" type="text" placeholder="between studio and the way home" /><button id="resolve" type="button">LOCATE</button></div>
+          <div class="prompts">
+            <button type="button">between Avery and Low</button>
+            <button type="button">near food but far from studio</button>
+            <button type="button">the strongest deadline pressure</button>
+            <button type="button">the way home</button>
+          </div>
+          <div id="description-result" class="result" aria-live="polite"></div>
         </div>
       </section>
 
-      <div id="map-tooltip" class="map-tooltip" hidden></div>
-      <p class="signature">Meredith Cui · Spatial AI · location / occupancy</p>
+      <footer>
+        <span>MEREDITH CUI · SPATIAL AI · OCT 2026</span>
+        <span>BUILDING GEOMETRY © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OPENSTREETMAP CONTRIBUTORS</a></span>
+        <span>DRAG TO ROTATE · SCROLL TO ZOOM · CLICK TO QUERY</span>
+      </footer>
     </main>
+    <script src="campus-data.js"></script>
     <script src="app.js"></script>
   </body>
 </html>

@@ -1,180 +1,356 @@
-const canvas = document.querySelector("#world");
+const canvas = document.querySelector("#map");
 const ctx = canvas.getContext("2d");
+const data = window.CAMPUS_DATA;
 
-const pulls = [
-  { id:"deadline", name:"THE DEADLINE", x:76, y:18, rx:18, ry:13, color:"#ef5b45", note:"loud · urgent · impossible to ignore" },
-  { id:"idea", name:"A GOOD IDEA", x:52, y:35, rx:16, ry:12, color:"#f2c230", note:"fragile · exciting · finally moving" },
-  { id:"home", name:"HOME", x:23, y:62, rx:18, ry:13, color:"#4b78d1", note:"quiet · far away · soft bed" },
-  { id:"hunger", name:"HUNGER", x:72, y:63, rx:17, ry:12, color:"#44a46b", note:"noodles? · definitely noodles" },
-  { id:"phone", name:"MY PHONE", x:22, y:22, rx:14, ry:11, color:"#9a67bd", note:"one quick look · never one quick look" },
-];
+const palette = {
+  night: "#101218", roof: "#ddd8cb", roofDim: "#9b9b96", side: "#545660",
+  line: "rgba(238,233,220,.20)", road: "rgba(238,233,220,.28)", path: "rgba(238,233,220,.13)",
+  red: "#ff604f", blue: "#6d7cff", green: "#6bcf9a", violet: "#bd79ff", yellow: "#ffd44a",
+};
 
-const objects = [
-  { id:"coffee", name:"cold coffee", x:42, y:55, glyph:"☕" },
-  { id:"charger", name:"phone charger", x:31, y:31, glyph:"⌁" },
-  { id:"card", name:"metro card", x:18, y:52, glyph:"▭" },
-  { id:"sketch", name:"crumpled sketch", x:62, y:46, glyph:"✎" },
-];
-
-const initialThoughts = [
-  ["the section cut",60,28,0], ["train home",31,57,2], ["unread text",25,29,4],
-  ["noodles",65,58,3], ["one good line",50,39,1], ["tomorrow morning",69,34,0],
-  ["laundry",37,63,2], ["change it again",55,49,1],
-];
-const spareThoughts = ["email professor","buy oat milk","is this too much?","save the file","call mom","the missing stair"];
-
-let thoughts=[];
-let playing=true;
-let speed=1;
-let elapsed=0;
-let last=performance.now();
-let pulse=null;
-
-function makeThought(name,x,y,target){
-  return {id:`t-${Math.random().toString(36).slice(2,8)}`,name,x,y,target,vx:(Math.random()-.5)*.4,vy:(Math.random()-.5)*.4,phase:Math.random()*6.28};
+const namedBuildings = new Map(data.buildings.filter(b => b.name).map(b => [b.name, b]));
+function centerOf(points) {
+  const usable = points.length > 1 && points[0][0] === points.at(-1)[0] && points[0][1] === points.at(-1)[1] ? points.slice(0, -1) : points;
+  return { x: usable.reduce((s, p) => s + p[0], 0) / usable.length, y: usable.reduce((s, p) => s + p[1], 0) / usable.length };
 }
-function reset(){
-  thoughts=initialThoughts.map(v=>makeThought(...v));
+data.buildings.forEach(b => b.center = centerOf(b.points));
+
+function building(name) {
+  const result = namedBuildings.get(name);
+  if (!result) throw new Error(`Missing mapped building: ${name}`);
+  return result;
+}
+function stationPoint() {
+  const stations = data.pois.filter(p => p.name.includes("116th Street–Columbia University"));
+  const preferred = stations.find(p => p.kind === "station") || stations[0];
+  return { x: preferred.point[0], y: preferred.point[1] };
+}
+
+const anchors = [
+  { id: "studio", name: "Avery Hall / studio", short: "STUDIO", color: palette.red, point: building("Avery Hall").center, radius: 115, note: "deadline pressure" },
+  { id: "research", name: "Butler Library / research", short: "RESEARCH", color: palette.blue, point: building("Butler Library").center, radius: 105, note: "research rabbit hole" },
+  { id: "food", name: "John Jay Hall / food", short: "FOOD", color: palette.green, point: building("John Jay Hall").center, radius: 95, note: "late dinner" },
+  { id: "exit", name: "116th Street subway / way home", short: "EXIT", color: palette.violet, point: stationPoint(), radius: 95, note: "the way home" },
+  { id: "idea", name: "Low Library / one good idea", short: "IDEA", color: palette.yellow, point: building("Low Memorial Library").center, radius: 90, note: "one good idea" },
+];
+
+const labelNames = ["Avery Hall", "Fayerweather Hall", "Low Memorial Library", "Butler Library", "Alfred Lerner Hall", "John Jay Hall", "Mudd Hall"];
+const labelBuildings = labelNames.map(building);
+
+const thoughtSeeds = [
+  ["section model", "studio", -26, 34], ["one more rendering", "studio", 42, -20],
+  ["citation I forgot", "research", -18, -24], ["noodles", "food", 32, 28],
+  ["last train", "exit", 25, -18], ["a better entrance", "idea", -34, 18],
+  ["email professor", "studio", 55, 42], ["call home", "exit", -22, 22],
+];
+const extraNames = ["missing stair", "coffee first", "change the section", "save the file", "tomorrow's critique", "tiny breakthrough"];
+let thoughts = [];
+let thoughtSerial = 0;
+let playing = true;
+let elapsed = 0;
+let lastFrame = performance.now();
+let renderedBuildings = [];
+let selectedPoint = null;
+
+const camera = { angle: -0.37, zoom: 1.05, cx: 0, cy: 0 };
+const pointer = { down: false, x: 0, y: 0, moved: 0, startAngle: 0 };
+
+function makeThought(name, targetId, ox = 0, oy = 0) {
+  const anchor = anchors.find(a => a.id === targetId);
+  return {
+    id: `thought-${++thoughtSerial}`, name, targetId,
+    x: anchor.point.x + ox, y: anchor.point.y + oy,
+    vx: (Math.random() - .5) * .6, vy: (Math.random() - .5) * .6,
+    phase: Math.random() * Math.PI * 2, history: [],
+  };
+}
+function resetThoughts() {
+  thoughts = thoughtSeeds.map(seed => makeThought(...seed));
   fillSelects();
 }
-function dist(a,b){return Math.hypot(a.x-b.x,a.y-b.y)}
-function inside(x,y,p,m=1){return ((x-p.x)/(p.rx*m))**2+((y-p.y)/(p.ry*m))**2<=1}
-function direction(dx,dy){
-  const a=Math.atan2(dy,dx)*180/Math.PI;
-  if(a>=-22.5&&a<22.5)return"east";if(a<67.5&&a>=22.5)return"southeast";if(a<112.5&&a>=67.5)return"south";if(a<157.5&&a>=112.5)return"southwest";if(a>=157.5||a<-157.5)return"west";if(a<-112.5)return"northwest";if(a<-67.5)return"north";return"northeast";
-}
-function toScreen(x,y){return{x:x/100*canvas.clientWidth,y:y/80*canvas.clientHeight}}
-function toWorld(x,y){return{x:x/canvas.clientWidth*100,y:y/canvas.clientHeight*80}}
 
-function locate(x,y){
-  const here=pulls.filter(p=>inside(x,y,p));
-  if(here.length>1)return{title:`between ${here.map(p=>p.name.toLowerCase()).join(" + ")}`,detail:"two pulls are competing here"};
-  if(here.length===1){
-    const p=here[0],d=dist({x,y},p);
-    return d<Math.min(p.rx,p.ry)*.35?{title:`right in ${p.name.toLowerCase()}`,detail:p.note}:{title:`the ${direction(x-p.x,y-p.y)} edge of ${p.name.toLowerCase()}`,detail:p.note};
+function dimensions() {
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  return { w, h, base: Math.min(w / 1120, h / 850), cx: w * .56 + camera.cx, cy: h * .47 + camera.cy };
+}
+function rotateWorld(x, y) {
+  const c = Math.cos(camera.angle), s = Math.sin(camera.angle);
+  return { x: x * c - y * s, y: x * s + y * c };
+}
+function project(point, z = 0) {
+  const d = dimensions(), r = rotateWorld(point.x, point.y), scale = d.base * camera.zoom;
+  return { x: d.cx + r.x * scale, y: d.cy - r.y * scale * .58 - z * scale * .72 };
+}
+function unproject(sx, sy) {
+  const d = dimensions(), scale = d.base * camera.zoom;
+  const rx = (sx - d.cx) / scale, ry = -(sy - d.cy) / (scale * .58);
+  const c = Math.cos(-camera.angle), s = Math.sin(-camera.angle);
+  return { x: rx * c - ry * s, y: rx * s + ry * c };
+}
+function distance(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
+function pointInPolygon(point, polygon) {
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const a = polygon[i], b = polygon[j];
+    if ((a[1] > point.y) !== (b[1] > point.y) && point.x < (b[0] - a[0]) * (point.y - a[1]) / (b[1] - a[1]) + a[0]) inside = !inside;
   }
-  const nearest=[...pulls].sort((a,b)=>dist({x,y},a)-dist({x,y},b))[0];
-  return{title:"in the blank space",detail:`closest pull: ${nearest.name.toLowerCase()}`};
+  return inside;
+}
+function pointInScreenPolygon(point, polygon) {
+  return pointInPolygon(point, polygon.map(p => [p.x, p.y]));
+}
+function compass(dx, dy) {
+  const a = Math.atan2(dy, dx) * 180 / Math.PI;
+  if (a >= -22.5 && a < 22.5) return "east";
+  if (a >= 22.5 && a < 67.5) return "northeast";
+  if (a >= 67.5 && a < 112.5) return "north";
+  if (a >= 112.5 && a < 157.5) return "northwest";
+  if (a >= 157.5 || a < -157.5) return "west";
+  if (a >= -157.5 && a < -112.5) return "southwest";
+  if (a >= -112.5 && a < -67.5) return "south";
+  return "southeast";
+}
+function rgba(hex, alpha) {
+  const n = Number.parseInt(hex.slice(1), 16);
+  return `rgba(${n >> 16},${n >> 8 & 255},${n & 255},${alpha})`;
 }
 
-function resize(){
-  const ratio=Math.min(devicePixelRatio||1,2);
-  canvas.width=Math.round(canvas.clientWidth*ratio);canvas.height=Math.round(canvas.clientHeight*ratio);
-  ctx.setTransform(ratio,0,0,ratio,0,0);
+function resize() {
+  const ratio = Math.min(devicePixelRatio || 1, 2);
+  canvas.width = Math.round(canvas.clientWidth * ratio);
+  canvas.height = Math.round(canvas.clientHeight * ratio);
+  ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
 }
 
-function paper(){
-  const w=canvas.clientWidth,h=canvas.clientHeight;
-  ctx.clearRect(0,0,w,h);
-  ctx.strokeStyle="rgba(40,37,33,.10)";ctx.lineWidth=1;ctx.setLineDash([1,7]);
-  for(let x=5;x<100;x+=5){const sx=toScreen(x,0).x;ctx.beginPath();ctx.moveTo(sx,0);ctx.lineTo(sx,h);ctx.stroke()}
-  for(let y=5;y<80;y+=5){const sy=toScreen(0,y).y;ctx.beginPath();ctx.moveTo(0,sy);ctx.lineTo(w,sy);ctx.stroke()}
-  ctx.setLineDash([]);ctx.fillStyle="rgba(40,37,33,.34)";ctx.font="9px Courier New";
-  ctx.fillText("N ↑",w-42,20);ctx.fillText("0,0",7,14);
-}
-
-function scribbleBlob(p,i){
-  const c=toScreen(p.x,p.y),sx=canvas.clientWidth/100,sy=canvas.clientHeight/80;
-  const breathe=1+Math.sin(elapsed*.0008+i*1.3)*.035;
-  ctx.save();ctx.globalAlpha=.52;ctx.fillStyle=p.color;ctx.globalCompositeOperation="multiply";
-  ctx.beginPath();
-  for(let n=0;n<=55;n++){
-    const a=n/55*Math.PI*2;
-    const rough=1+.055*Math.sin(a*5+i*2)+.035*Math.cos(a*9+elapsed*.00025);
-    const x=c.x+Math.cos(a)*p.rx*sx*rough*breathe,y=c.y+Math.sin(a)*p.ry*sy*rough*breathe;
-    n?ctx.lineTo(x,y):ctx.moveTo(x,y);
+function drawGrounds() {
+  for (const ground of data.grounds) {
+    ctx.beginPath();
+    ground.points.forEach((p, i) => { const s = project({ x: p[0], y: p[1] }); i ? ctx.lineTo(s.x, s.y) : ctx.moveTo(s.x, s.y); });
+    ctx.closePath(); ctx.fillStyle = ground.kind === "pitch" ? "rgba(107,207,154,.08)" : "rgba(107,207,154,.13)"; ctx.fill();
   }
-  ctx.closePath();ctx.fill();ctx.restore();
-  ctx.save();ctx.translate(c.x,c.y);ctx.rotate((i-2)*.025);
-  ctx.fillStyle="#282521";ctx.font='700 13px "Courier New"';ctx.textAlign="center";ctx.fillText(p.name,0,-2);
-  ctx.font='10px "Bradley Hand","Comic Sans MS",cursive';ctx.fillText(p.note,0,13);ctx.restore();
 }
-
-function drawObject(o){
-  const p=toScreen(o.x,o.y);ctx.save();ctx.translate(p.x,p.y);ctx.rotate(-.08);
-  ctx.fillStyle="#faf7ee";ctx.strokeStyle="#282521";ctx.lineWidth=1.5;ctx.setLineDash([3,2]);
-  ctx.beginPath();ctx.rect(-12,-12,24,24);ctx.fill();ctx.stroke();ctx.setLineDash([]);
-  ctx.fillStyle="#282521";ctx.font="15px serif";ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText(o.glyph,0,0);ctx.restore();
+function drawRoutes() {
+  const rank = { primary: 4, secondary: 3, tertiary: 2.5, residential: 1.8, service: 1.1, pedestrian: 1.2, footway: .65, path: .65, steps: .8 };
+  for (const route of data.routes) {
+    ctx.beginPath();
+    route.points.forEach((p, i) => { const s = project({ x: p[0], y: p[1] }); i ? ctx.lineTo(s.x, s.y) : ctx.moveTo(s.x, s.y); });
+    ctx.strokeStyle = ["footway", "path", "steps"].includes(route.kind) ? palette.path : palette.road;
+    ctx.lineWidth = rank[route.kind] || 1; ctx.stroke();
+  }
 }
-
-function drawThought(t){
-  const p=toScreen(t.x,t.y),bob=Math.sin(elapsed*.004+t.phase)*2;
-  ctx.save();ctx.translate(p.x,p.y+bob);ctx.rotate(Math.sin(t.phase+elapsed*.001)*.08);
-  ctx.strokeStyle="#282521";ctx.fillStyle="#fffdf7";ctx.lineWidth=1.7;
-  ctx.beginPath();ctx.ellipse(0,0,7,5,0,0,Math.PI*2);ctx.fill();ctx.stroke();
-  ctx.beginPath();ctx.moveTo(-5,3);ctx.lineTo(-9,8);ctx.lineTo(-1,5);ctx.stroke();
-  ctx.fillStyle="#282521";ctx.font='10px "Bradley Hand","Comic Sans MS",cursive';ctx.textAlign="center";ctx.fillText(t.name,0,-10);ctx.restore();
+function drawGrid() {
+  const d = dimensions();
+  ctx.save(); ctx.strokeStyle = "rgba(238,233,220,.045)"; ctx.lineWidth = 1;
+  for (let n = -500; n <= 500; n += 50) {
+    let a = project({ x: -550, y: n }), b = project({ x: 550, y: n }); ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+    a = project({ x: n, y: -550 }); b = project({ x: n, y: 550 }); ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+  }
+  ctx.restore();
 }
-
-function drawPulse(){
-  if(!pulse)return;const age=performance.now()-pulse.time;if(age>1100){pulse=null;return}
-  const p=toScreen(pulse.x,pulse.y);ctx.save();ctx.strokeStyle=`rgba(40,37,33,${1-age/1100})`;ctx.lineWidth=2;ctx.setLineDash([4,3]);ctx.beginPath();ctx.arc(p.x,p.y,8+age*.025,0,Math.PI*2);ctx.stroke();ctx.restore();
+function drawFields() {
+  for (const anchor of anchors) {
+    const p = project(anchor.point), d = dimensions(), r = anchor.radius * d.base * camera.zoom;
+    const pulse = 1 + Math.sin(elapsed * .0012 + anchors.indexOf(anchor)) * .07;
+    ctx.save(); ctx.translate(p.x, p.y); ctx.scale(1, .52);
+    const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, r * pulse);
+    gradient.addColorStop(0, rgba(anchor.color, .25)); gradient.addColorStop(.48, rgba(anchor.color, .11)); gradient.addColorStop(1, rgba(anchor.color, 0));
+    ctx.fillStyle = gradient; ctx.beginPath(); ctx.arc(0, 0, r * pulse, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = rgba(anchor.color, .42); ctx.lineWidth = 1; ctx.setLineDash([4, 7]);
+    ctx.beginPath(); ctx.arc(0, 0, r * .72 * pulse, 0, Math.PI * 2); ctx.stroke(); ctx.restore();
+  }
 }
-
-function move(dt){
-  thoughts.forEach((t,i)=>{
-    const goal=pulls[t.target];t.vx+=(goal.x-t.x)*.00055*dt;t.vy+=(goal.y-t.y)*.00055*dt;
-    t.vx+=Math.cos(elapsed*.0007+t.phase)*.0007*dt;t.vy+=Math.sin(elapsed*.0009+t.phase)*.0007*dt;
-    thoughts.forEach((o,j)=>{if(i===j)return;const dx=t.x-o.x,dy=t.y-o.y,d=dx*dx+dy*dy;if(d>0&&d<20){t.vx+=dx/d*.004*dt;t.vy+=dy/d*.004*dt}});
-    t.vx*=Math.pow(.986,dt/16);t.vy*=Math.pow(.986,dt/16);
-    const mag=Math.hypot(t.vx,t.vy),cap=.034*dt;if(mag>cap){t.vx=t.vx/mag*cap;t.vy=t.vy/mag*cap}
-    t.x+=t.vx*speed;t.y+=t.vy*speed;
-    if(t.x<3||t.x>97)t.vx*=-1;if(t.y<3||t.y>77)t.vy*=-1;t.x=Math.max(3,Math.min(97,t.x));t.y=Math.max(3,Math.min(77,t.y));
-    if(dist(t,goal)<5&&Math.random()<.0015*dt)t.target=Math.floor(Math.random()*pulls.length);
+function anchorForBuilding(b) {
+  return anchors.find(a => distance(a.point, b.center) < 18);
+}
+function drawBuildings() {
+  const sorted = [...data.buildings].sort((a, b) => {
+    const ay = project(a.center).y, by = project(b.center).y;
+    return ay - by;
   });
+  renderedBuildings = [];
+  for (const b of sorted) {
+    const base = b.points.map(p => project({ x: p[0], y: p[1] }));
+    const roof = b.points.map(p => project({ x: p[0], y: p[1] }, b.height));
+    const anchor = anchorForBuilding(b);
+    for (let i = 0; i < base.length - 1; i++) {
+      const next = i + 1;
+      ctx.beginPath(); ctx.moveTo(base[i].x, base[i].y); ctx.lineTo(base[next].x, base[next].y); ctx.lineTo(roof[next].x, roof[next].y); ctx.lineTo(roof[i].x, roof[i].y); ctx.closePath();
+      ctx.fillStyle = anchor ? rgba(anchor.color, .32) : palette.side; ctx.fill();
+      ctx.strokeStyle = "rgba(16,18,24,.45)"; ctx.lineWidth = .6; ctx.stroke();
+    }
+    ctx.beginPath(); roof.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)); ctx.closePath();
+    ctx.fillStyle = anchor ? anchor.color : (b.name ? palette.roof : palette.roofDim); ctx.globalAlpha = anchor ? .92 : .78; ctx.fill(); ctx.globalAlpha = 1;
+    ctx.strokeStyle = anchor ? rgba(anchor.color, 1) : "rgba(16,18,24,.55)"; ctx.lineWidth = anchor ? 1.25 : .65; ctx.stroke();
+    renderedBuildings.push({ building: b, roof, base });
+  }
+}
+function drawLabels() {
+  const small = canvas.clientWidth < 760;
+  for (const b of labelBuildings) {
+    if (small && !["Avery Hall", "Low Memorial Library", "Butler Library"].includes(b.name)) continue;
+    const p = project(b.center, b.height), anchor = anchorForBuilding(b);
+    const label = b.name.replace(" Memorial", "").toUpperCase();
+    ctx.font = "500 9px Courier New"; const width = ctx.measureText(label).width + 10;
+    const lx = p.x + 12, ly = p.y - 13;
+    ctx.strokeStyle = anchor ? anchor.color : "rgba(238,233,220,.55)"; ctx.lineWidth = .7;
+    ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(lx, ly + 3); ctx.stroke();
+    ctx.fillStyle = "rgba(16,18,24,.84)"; ctx.fillRect(lx - 3, ly - 8, width, 14);
+    ctx.fillStyle = anchor ? anchor.color : palette.roof; ctx.fillText(label, lx + 2, ly + 2);
+  }
+}
+function drawThoughts() {
+  for (const t of thoughts) {
+    const anchor = anchors.find(a => a.id === t.targetId), p = project(t, 8 + Math.sin(elapsed * .003 + t.phase) * 4);
+    if (t.history.length > 1) {
+      ctx.beginPath(); t.history.forEach((h, i) => { const s = project(h, 5); i ? ctx.lineTo(s.x, s.y) : ctx.moveTo(s.x, s.y); });
+      ctx.strokeStyle = rgba(anchor.color, .22); ctx.lineWidth = 1.2; ctx.stroke();
+    }
+    const glow = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, 14);
+    glow.addColorStop(0, rgba(anchor.color, .8)); glow.addColorStop(1, rgba(anchor.color, 0));
+    ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(p.x, p.y, 14, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = palette.roof; ctx.strokeStyle = anchor.color; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(p.x, p.y, 3.4, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.font = "500 8px Courier New"; ctx.fillStyle = "rgba(238,233,220,.82)"; ctx.fillText(t.name.toUpperCase(), p.x + 8, p.y - 7);
+  }
+}
+function drawSelected() {
+  if (!selectedPoint) return;
+  const p = project(selectedPoint, 3), age = (performance.now() - selectedPoint.time) % 1200;
+  ctx.strokeStyle = rgba(palette.yellow, .85 - age / 1600); ctx.lineWidth = 1.4; ctx.setLineDash([3, 4]);
+  ctx.beginPath(); ctx.arc(p.x, p.y, 8 + age * .012, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
+}
+function render(now) {
+  const dt = Math.min(now - lastFrame, 35); lastFrame = now;
+  if (playing) { elapsed += dt; updateThoughts(dt); }
+  ctx.clearRect(0, 0, canvas.clientWidth, canvas.clientHeight);
+  drawGrid(); drawGrounds(); drawRoutes(); drawFields(); drawBuildings(); drawThoughts(); drawLabels(); drawSelected();
+  updateLiveResults(); updateClock(); requestAnimationFrame(render);
 }
 
-function frame(now){
-  const dt=Math.min(now-last,32);last=now;if(playing){elapsed+=dt*speed;move(dt)}
-  paper();pulls.forEach(scribbleBlob);objects.forEach(drawObject);thoughts.forEach(drawThought);drawPulse();updateObject();updateRelative();requestAnimationFrame(frame);
+function updateThoughts(dt) {
+  for (const [index, t] of thoughts.entries()) {
+    const target = anchors.find(a => a.id === t.targetId), dx = target.point.x - t.x, dy = target.point.y - t.y;
+    t.vx += dx * .000025 * dt + Math.cos(elapsed * .00045 + t.phase) * .001 * dt;
+    t.vy += dy * .000025 * dt + Math.sin(elapsed * .00052 + t.phase) * .001 * dt;
+    for (const [j, other] of thoughts.entries()) {
+      if (index === j) continue; const ox = t.x - other.x, oy = t.y - other.y, d2 = ox * ox + oy * oy;
+      if (d2 > 1 && d2 < 2200) { t.vx += ox / d2 * .014 * dt; t.vy += oy / d2 * .014 * dt; }
+    }
+    t.vx *= Math.pow(.985, dt / 16); t.vy *= Math.pow(.985, dt / 16);
+    const mag = Math.hypot(t.vx, t.vy), cap = 1.25; if (mag > cap) { t.vx = t.vx / mag * cap; t.vy = t.vy / mag * cap; }
+    t.x += t.vx * dt / 16; t.y += t.vy * dt / 16;
+    if (Math.random() < .012) { t.history.push({ x: t.x, y: t.y }); if (t.history.length > 18) t.history.shift(); }
+    if (distance(t, target.point) < 28 && Math.random() < .0004 * dt) t.targetId = anchors[Math.floor(Math.random() * anchors.length)].id;
+  }
+}
+function updateClock() {
+  const total = 23 * 3600 + 47 * 60 + Math.floor(elapsed / 1000);
+  const h24 = Math.floor(total / 3600) % 24, min = Math.floor(total / 60) % 60, sec = total % 60;
+  const h12 = h24 % 12 || 12;
+  document.querySelector("#clock").textContent = `${String(h12).padStart(2, "0")}:${String(min).padStart(2, "0")}:${String(sec).padStart(2, "0")} ${h24 >= 12 ? "PM" : "AM"}`;
 }
 
-function fillSelects(){
-  const one=document.querySelector("#object-select"),two=document.querySelector("#occupant-select"),old1=one.value,old2=two.value;
-  one.innerHTML=`<optgroup label="thoughts that move">${thoughts.map(t=>`<option value="thought:${t.id}">${t.name}</option>`).join("")}</optgroup><optgroup label="things stuck on the desk">${objects.map(o=>`<option value="object:${o.id}">${o.name}</option>`).join("")}</optgroup>`;
-  two.innerHTML=thoughts.map(t=>`<option value="${t.id}">${t.name}</option>`).join("");
-  if([...one.options].some(o=>o.value===old1))one.value=old1;if([...two.options].some(o=>o.value===old2))two.value=old2;
+function buildingAt(point) { return data.buildings.find(b => pointInPolygon(point, b.points)); }
+function nearestBuilding(point, namedOnly = true) {
+  return data.buildings.filter(b => !namedOnly || b.name).map(b => ({ b, d: distance(point, b.center) })).sort((a, b) => a.d - b.d)[0];
 }
-function referent(id){return thoughts.find(t=>`thought:${t.id}`===id)||objects.find(o=>`object:${o.id}`===id)}
-function updateObject(){
-  const o=referent(document.querySelector("#object-select").value);if(!o)return;const l=locate(o.x,o.y);
-  document.querySelector("#object-result").innerHTML=`<strong>${l.title}</strong>${o.name} is at (${o.x.toFixed(1)}, ${o.y.toFixed(1)}). <small>${l.detail}</small>`;
+function nearestAnchor(point) { return anchors.map(a => ({ a, d: distance(point, a.point) })).sort((a, b) => a.d - b.d)[0]; }
+function occupancyAt(point) {
+  const b = buildingAt(point), field = anchors.filter(a => distance(point, a.point) <= a.radius), nearThoughts = thoughts.filter(t => distance(point, t) < 24);
+  return { building: b, fields: field, thoughts: nearThoughts };
 }
-function inspect(x,y,screen){
-  x=Math.max(0,Math.min(100,Number(x)||0));y=Math.max(0,Math.min(80,Number(y)||0));
-  document.querySelector("#query-x").value=x.toFixed(1);document.querySelector("#query-y").value=y.toFixed(1);pulse={x,y,time:performance.now()};
-  const areas=pulls.filter(p=>inside(x,y,p)),near=[...thoughts.filter(t=>dist(t,{x,y})<4.5),...objects.filter(o=>dist(o,{x,y})<3.5)],l=locate(x,y);
-  document.querySelector("#occupancy-result").innerHTML=`<strong>${l.title}</strong>${areas.length?areas.map(a=>a.name.toLowerCase()).join(" and ")+" occupy this point":"no pull fully occupies this point"}. ${near.length?`Nearby: ${near.map(n=>n.name).join(", ")}.`:"No thought is close enough right now."} <small>(${x.toFixed(1)}, ${y.toFixed(1)})</small>`;
-  if(screen){const tip=document.querySelector("#map-tooltip");tip.hidden=false;tip.style.left=`${Math.min(screen.x,canvas.clientWidth-235)}px`;tip.style.top=`${Math.max(35,screen.y)}px`;tip.innerHTML=`<b>${l.title}</b><br>${near.length?near.map(n=>n.name).join(", "):"nothing claiming this exact spot"}`;setTimeout(()=>tip.hidden=true,2400)}
+function describePoint(point) {
+  const occ = occupancyAt(point), nearest = nearestBuilding(point), field = nearestAnchor(point);
+  if (occ.building) return { title: occ.building.name || "unnamed campus building", detail: occ.fields.length ? `inside ${occ.fields.map(f => f.note).join(" + ")}` : "architectural footprint" };
+  if (occ.fields.length) return { title: occ.fields.map(f => f.short).join(" + ") + " field", detail: occ.fields.map(f => f.note).join(" · ") };
+  return { title: `campus walk near ${nearest.b.name}`, detail: `${Math.round(nearest.d)} m away · closest emotional pull: ${field.a.note}` };
 }
-function updateRelative(){
-  const t=thoughts.find(t=>t.id===document.querySelector("#occupant-select").value),p=pulls.find(p=>p.id===document.querySelector("#anchor-select").value);if(!t||!p)return;
-  const dx=t.x-p.x,dy=t.y-p.y,bearing=(Math.atan2(dx,-dy)*180/Math.PI+360)%360,relation=inside(t.x,t.y,p)?"inside its pull":"outside its pull";
-  document.querySelector("#frame-result").innerHTML=`<strong>${t.name} is ${direction(dx,dy)} of ${p.name.toLowerCase()}</strong>${relation}, ${Math.hypot(dx,dy).toFixed(1)} units from the center. <small>local vector ⟨${dx.toFixed(1)}, ${dy.toFixed(1)}⟩ / bearing ${bearing.toFixed(0)}°</small>`;
+function coordinateText(point) { return `${Math.abs(Math.round(point.x))} m ${point.x >= 0 ? "E" : "W"} / ${Math.abs(Math.round(point.y))} m ${point.y >= 0 ? "N" : "S"}`; }
+
+function fillSelects() {
+  const objectSelect = document.querySelector("#object-select"), occupantSelect = document.querySelector("#occupant-select"), oldObject = objectSelect.value, oldOccupant = occupantSelect.value;
+  objectSelect.innerHTML = `<optgroup label="moving thoughts">${thoughts.map(t => `<option value="thought:${t.id}">${t.name}</option>`).join("")}</optgroup><optgroup label="campus landmarks">${anchors.map(a => `<option value="anchor:${a.id}">${a.name}</option>`).join("")}</optgroup>`;
+  occupantSelect.innerHTML = thoughts.map(t => `<option value="${t.id}">${t.name}</option>`).join("");
+  if ([...objectSelect.options].some(o => o.value === oldObject)) objectSelect.value = oldObject;
+  if ([...occupantSelect.options].some(o => o.value === oldOccupant)) occupantSelect.value = oldOccupant;
 }
-function crowded(){return thoughts.map(t=>({...t,count:thoughts.filter(o=>dist(t,o)<12).length})).sort((a,b)=>b.count-a.count)[0]}
-function resolve(text){
-  const q=text.trim().toLowerCase();let a;
-  if((q.includes("idea")||q.includes("good"))&&(q.includes("panic")||q.includes("deadline")))a={title:"the productive panic seam",x:64,y:27,why:"halfway between a good idea and the deadline"};
-  else if(q.includes("home")&&(q.includes("hungry")||q.includes("hunger")))a={title:"the homesick snack corridor",x:47,y:62,why:"between home and hunger"};
-  else if((q.includes("far")||q.includes("away"))&&q.includes("phone"))a={title:"the phone-free corner",x:88,y:70,why:"the farthest useful corner from my phone"};
-  else if(q.includes("stuck")||q.includes("crowd")||q.includes("all my thoughts")){const c=crowded();a={title:"the current thought traffic jam",x:c.x,y:c.y,why:`${c.count} thoughts are packed into this neighborhood`}}
-  else if(q.includes("food")||q.includes("noodle")||q.includes("hungry"))a={title:"hunger",x:72,y:63,why:"food language resolves to the hunger pull"};
-  else if(q.includes("sleep")||q.includes("bed")||q.includes("home"))a={title:"home",x:23,y:62,why:"rest and bed resolve to home"};
-  else {const p=pulls.find(p=>q.includes(p.id));a=p?{title:p.name.toLowerCase(),x:p.x,y:p.y,why:"you named this pull directly"}:{title:"the desk's undecided center",x:50,y:40,why:"the description gave no strong clue, which is also a location"}}
-  pulse={x:a.x,y:a.y,time:performance.now()};document.querySelector("#description-result").innerHTML=`<strong>${a.title}</strong>(${a.x.toFixed(1)}, ${a.y.toFixed(1)}) — ${a.why}.`;
+function selectedReferent() {
+  const value = document.querySelector("#object-select").value, [kind, id] = value.split(":");
+  return kind === "thought" ? thoughts.find(t => t.id === id) : anchors.find(a => a.id === id)?.point;
+}
+function updateLiveResults() {
+  const ref = selectedReferent();
+  if (ref) {
+    const info = describePoint(ref), label = ref.name || anchors.find(a => a.point === ref)?.name || "landmark";
+    document.querySelector("#object-result").innerHTML = `<strong>${info.title}</strong>${label} · ${coordinateText(ref)}<br><small>${info.detail}</small>`;
+  }
+  const thought = thoughts.find(t => t.id === document.querySelector("#occupant-select").value), anchor = anchors.find(a => a.id === document.querySelector("#anchor-select").value);
+  if (thought && anchor) {
+    const dx = thought.x - anchor.point.x, dy = thought.y - anchor.point.y;
+    const sx = `${dx >= 0 ? "+" : ""}${Math.round(dx)}`, sy = `${dy >= 0 ? "+" : ""}${Math.round(dy)}`;
+    document.querySelector("#frame-result").innerHTML = `<strong>${compass(dx, dy)} of ${anchor.name}</strong>${thought.name} is ${Math.round(Math.hypot(dx, dy))} m from this local origin.<br><small>local vector x=${sx} m · y=${sy} m</small>`;
+  }
+}
+function inspect(point, preferredBuilding = null) {
+  selectedPoint = { ...point, time: performance.now() };
+  const occ = occupancyAt(point), b = preferredBuilding || occ.building, info = describePoint(point);
+  document.querySelector("#query-x").value = Math.round(point.x); document.querySelector("#query-y").value = Math.round(point.y);
+  const occupants = [b?.name, ...occ.fields.map(f => f.note), ...occ.thoughts.map(t => t.name)].filter(Boolean);
+  document.querySelector("#occupancy-result").innerHTML = `<strong>${b?.name || info.title}</strong>${occupants.length ? occupants.join(" · ") : "No named occupant at this point."}<br><small>${coordinateText(point)}</small>`;
+  document.querySelector("#place-name").textContent = b?.name || info.title;
+  document.querySelector("#place-detail").textContent = b ? `${Math.round(b.height)} m mapped height · ${info.detail}` : info.detail;
+  document.querySelector("#place-coordinate").textContent = coordinateText(point);
+  document.querySelector("#place-occupancy").textContent = occupants.slice(1).join(" · ") || "open campus ground";
+  document.querySelector("#place-card").classList.add("open");
+}
+function infer(text) {
+  const q = text.toLowerCase().trim(), avery = building("Avery Hall").center, low = building("Low Memorial Library").center, butler = building("Butler Library").center, food = anchors.find(a => a.id === "food").point, exit = stationPoint();
+  let point, title, why;
+  if (q.includes("avery") && q.includes("low")) { point = { x: (avery.x + low.x) / 2, y: (avery.y + low.y) / 2 }; title = "Avery–Low hinge"; why = "the metric midpoint between Avery Hall and Low Library"; }
+  else if ((q.includes("food") || q.includes("hungry")) && (q.includes("far") || q.includes("studio"))) { point = food; title = "John Jay food field"; why = "food is strongest here, about " + Math.round(distance(food, avery)) + " m from Avery"; }
+  else if (q.includes("deadline") || q.includes("pressure") || q.includes("studio")) { point = avery; title = "deadline maximum"; why = "the studio attraction peaks at Avery Hall"; }
+  else if (q.includes("home") || q.includes("exit") || q.includes("subway")) { point = exit; title = "the way home"; why = "116th Street–Columbia University station"; }
+  else if (q.includes("research") || q.includes("library") || q.includes("butler")) { point = butler; title = "research rabbit hole"; why = "Butler Library is the research-field origin"; }
+  else if (q.includes("between")) { point = { x: (avery.x + exit.x) / 2, y: (avery.y + exit.y) / 2 }; title = "studio–exit threshold"; why = "halfway from Avery Hall to the subway"; }
+  else { point = low; title = "one good idea"; why = "without a stable clue, the model returns to Low Library's idea field"; }
+  selectedPoint = { ...point, time: performance.now() };
+  document.querySelector("#description-result").innerHTML = `<strong>${title}</strong>${why}<br><small>${coordinateText(point)}</small>`;
+  inspect(point);
 }
 
-document.querySelectorAll(".tab").forEach(tab=>tab.addEventListener("click",()=>{document.querySelectorAll(".tab").forEach(t=>{t.classList.toggle("active",t===tab);t.setAttribute("aria-selected",t===tab?"true":"false")});document.querySelectorAll(".view").forEach(v=>v.classList.toggle("active",v.dataset.view===tab.dataset.tab))}));
-document.querySelector("#play-button").addEventListener("click",e=>{playing=!playing;e.currentTarget.textContent=playing?"pause the noise":"let thoughts move";document.querySelector("#sim-status").textContent=playing?"currently overthinking":"brain briefly quiet"});
-document.querySelector("#speed-range").addEventListener("input",e=>{speed=Number(e.target.value);document.querySelector("#speed-output").value=`${speed.toFixed(1)}×`});
-document.querySelector("#add-wanderer").addEventListener("click",()=>{const used=new Set(thoughts.map(t=>t.name)),name=spareThoughts.find(n=>!used.has(n))||`thought #${thoughts.length+1}`;thoughts.push(makeThought(name,50+(Math.random()-.5)*8,42+(Math.random()-.5)*8,Math.floor(Math.random()*pulls.length)));fillSelects()});
-document.querySelector("#stir-button").addEventListener("click",()=>thoughts.forEach(t=>{t.target=Math.floor(Math.random()*pulls.length);t.vx+=(Math.random()-.5)*.8;t.vy+=(Math.random()-.5)*.8}));
-document.querySelector("#reset-button").addEventListener("click",reset);
-document.querySelector("#occupancy-query").addEventListener("click",()=>inspect(document.querySelector("#query-x").value,document.querySelector("#query-y").value));
-document.querySelector("#resolve-button").addEventListener("click",()=>resolve(document.querySelector("#description-input").value));
-document.querySelector("#description-input").addEventListener("keydown",e=>{if(e.key==="Enter")resolve(e.currentTarget.value)});
-document.querySelectorAll(".suggestions button").forEach(b=>b.addEventListener("click",()=>{document.querySelector("#description-input").value=b.textContent;resolve(b.textContent)}));
-canvas.addEventListener("click",e=>{const r=canvas.getBoundingClientRect(),s={x:e.clientX-r.left,y:e.clientY-r.top},p=toWorld(s.x,s.y);inspect(p.x,p.y,s);document.querySelector('[data-tab="occupancy"]').click()});
-document.querySelector("#anchor-select").innerHTML=pulls.map(p=>`<option value="${p.id}">${p.name.toLowerCase()}</option>`).join("");
-window.addEventListener("resize",resize);reset();resize();inspect(50,40);requestAnimationFrame(frame);
+document.querySelectorAll(".tab").forEach(tab => tab.addEventListener("click", () => {
+  document.querySelectorAll(".tab").forEach(t => { t.classList.toggle("active", t === tab); t.setAttribute("aria-selected", t === tab ? "true" : "false"); });
+  document.querySelectorAll(".view").forEach(v => v.classList.toggle("active", v.dataset.view === tab.dataset.tab));
+}));
+document.querySelector("#play").addEventListener("click", event => { playing = !playing; event.currentTarget.textContent = playing ? "PAUSE THOUGHTS" : "RESUME THOUGHTS"; });
+document.querySelector("#add").addEventListener("click", () => { const used = new Set(thoughts.map(t => t.name)), name = extraNames.find(n => !used.has(n)) || `thought ${thoughts.length + 1}`, target = anchors[Math.floor(Math.random() * anchors.length)]; thoughts.push(makeThought(name, target.id, (Math.random() - .5) * 80, (Math.random() - .5) * 80)); fillSelects(); });
+document.querySelector("#rotate-left").addEventListener("click", () => camera.angle -= .16);
+document.querySelector("#rotate-right").addEventListener("click", () => camera.angle += .16);
+document.querySelector("#reset-view").addEventListener("click", () => { camera.angle = -.37; camera.zoom = 1.05; camera.cx = 0; camera.cy = 0; });
+document.querySelector("#close-place").addEventListener("click", () => document.querySelector("#place-card").classList.remove("open"));
+document.querySelector("#object-select").addEventListener("change", updateLiveResults);
+document.querySelector("#occupant-select").addEventListener("change", updateLiveResults);
+document.querySelector("#anchor-select").addEventListener("change", updateLiveResults);
+document.querySelector("#occupancy-query").addEventListener("click", () => inspect({ x: Number(document.querySelector("#query-x").value) || 0, y: Number(document.querySelector("#query-y").value) || 0 }));
+document.querySelector("#resolve").addEventListener("click", () => infer(document.querySelector("#description-input").value));
+document.querySelector("#description-input").addEventListener("keydown", event => { if (event.key === "Enter") infer(event.currentTarget.value); });
+document.querySelectorAll(".prompts button").forEach(button => button.addEventListener("click", () => { document.querySelector("#description-input").value = button.textContent; infer(button.textContent); }));
+
+canvas.addEventListener("wheel", event => { event.preventDefault(); camera.zoom = Math.max(.55, Math.min(2.3, camera.zoom * (event.deltaY > 0 ? .92 : 1.08))); }, { passive: false });
+canvas.addEventListener("pointerdown", event => { pointer.down = true; pointer.x = event.clientX; pointer.y = event.clientY; pointer.moved = 0; pointer.startAngle = camera.angle; canvas.setPointerCapture(event.pointerId); });
+canvas.addEventListener("pointermove", event => { if (!pointer.down) return; const dx = event.clientX - pointer.x, dy = event.clientY - pointer.y; pointer.moved = Math.hypot(dx, dy); if (pointer.moved > 3) camera.angle = pointer.startAngle + dx * .005; });
+canvas.addEventListener("pointerup", event => {
+  if (!pointer.down) return; pointer.down = false;
+  if (pointer.moved < 5) {
+    const rect = canvas.getBoundingClientRect(), screen = { x: event.clientX - rect.left, y: event.clientY - rect.top };
+    const hit = [...renderedBuildings].reverse().find(item => pointInScreenPolygon(screen, item.roof));
+    const point = hit ? hit.building.center : unproject(screen.x, screen.y);
+    inspect(point, hit?.building); document.querySelector('[data-tab="occupancy"]').click();
+  }
+});
+
+document.querySelector("#anchor-select").innerHTML = anchors.map(a => `<option value="${a.id}">${a.name}</option>`).join("");
+window.addEventListener("resize", resize);
+resetThoughts(); resize(); inspect(building("Avery Hall").center, building("Avery Hall"));
+document.querySelector("#place-card").classList.remove("open");
+requestAnimationFrame(render);
