@@ -3,9 +3,9 @@ const ctx = canvas.getContext("2d");
 const data = window.CAMPUS_DATA;
 
 const palette = {
-  night: "#101218", roof: "#ddd8cb", roofDim: "#9b9b96", side: "#545660",
-  line: "rgba(238,233,220,.20)", road: "rgba(238,233,220,.28)", path: "rgba(238,233,220,.13)",
-  red: "#ff604f", blue: "#6d7cff", green: "#6bcf9a", violet: "#bd79ff", yellow: "#ffd44a",
+  ink: "#24231f", roof: "#f7f3e8", roofDim: "#d1cdc3", side: "#aaa79f",
+  line: "rgba(36,35,31,.18)", road: "rgba(36,35,31,.28)", path: "rgba(36,35,31,.13)",
+  red: "#d94b38", blue: "#526fc1", green: "#4b9b73", violet: "#8f69ad", yellow: "#d6a915",
 };
 
 const namedBuildings = new Map(data.buildings.filter(b => b.name).map(b => [b.name, b]));
@@ -34,13 +34,14 @@ const anchors = [
   { id: "idea", name: "Low Library / one good idea", short: "IDEA", color: palette.yellow, point: building("Low Memorial Library").center, radius: 90, note: "one good idea" },
 ];
 
-const labelNames = ["Avery Hall", "Fayerweather Hall", "Low Memorial Library", "Butler Library", "Alfred Lerner Hall", "John Jay Hall", "Mudd Hall"];
+const labelNames = ["Avery Hall", "Low Memorial Library", "Butler Library", "John Jay Hall"];
 const labelBuildings = labelNames.map(building);
 
 const thoughtSeeds = [
+  ["last train", "exit", 25, -18],
   ["section model", "studio", -26, 34], ["one more rendering", "studio", 42, -20],
   ["citation I forgot", "research", -18, -24], ["noodles", "food", 32, 28],
-  ["last train", "exit", 25, -18], ["a better entrance", "idea", -34, 18],
+  ["a better entrance", "idea", -34, 18],
   ["email professor", "studio", 55, 42], ["call home", "exit", -22, 22],
 ];
 const extraNames = ["missing stair", "coffee first", "change the section", "save the file", "tomorrow's critique", "tiny breakthrough"];
@@ -71,7 +72,7 @@ function resetThoughts() {
 
 function dimensions() {
   const w = canvas.clientWidth, h = canvas.clientHeight;
-  return { w, h, base: Math.min(w / 1120, h / 850), cx: w * .56 + camera.cx, cy: h * .47 + camera.cy };
+  return { w, h, base: Math.min(w / 980, h / 620), cx: w * .51 + camera.cx, cy: h * .55 + camera.cy };
 }
 function rotateWorld(x, y) {
   const c = Math.cos(camera.angle), s = Math.sin(camera.angle);
@@ -126,7 +127,7 @@ function drawGrounds() {
   for (const ground of data.grounds) {
     ctx.beginPath();
     ground.points.forEach((p, i) => { const s = project({ x: p[0], y: p[1] }); i ? ctx.lineTo(s.x, s.y) : ctx.moveTo(s.x, s.y); });
-    ctx.closePath(); ctx.fillStyle = ground.kind === "pitch" ? "rgba(107,207,154,.08)" : "rgba(107,207,154,.13)"; ctx.fill();
+    ctx.closePath(); ctx.fillStyle = ground.kind === "pitch" ? "rgba(75,155,115,.08)" : "rgba(75,155,115,.13)"; ctx.fill();
   }
 }
 function drawRoutes() {
@@ -139,8 +140,7 @@ function drawRoutes() {
   }
 }
 function drawGrid() {
-  const d = dimensions();
-  ctx.save(); ctx.strokeStyle = "rgba(238,233,220,.045)"; ctx.lineWidth = 1;
+  ctx.save(); ctx.strokeStyle = "rgba(36,35,31,.055)"; ctx.lineWidth = 1;
   for (let n = -500; n <= 500; n += 50) {
     let a = project({ x: -550, y: n }), b = project({ x: 550, y: n }); ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
     a = project({ x: n, y: -550 }); b = project({ x: n, y: 550 }); ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
@@ -153,9 +153,9 @@ function drawFields() {
     const pulse = 1 + Math.sin(elapsed * .0012 + anchors.indexOf(anchor)) * .07;
     ctx.save(); ctx.translate(p.x, p.y); ctx.scale(1, .52);
     const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, r * pulse);
-    gradient.addColorStop(0, rgba(anchor.color, .25)); gradient.addColorStop(.48, rgba(anchor.color, .11)); gradient.addColorStop(1, rgba(anchor.color, 0));
+    gradient.addColorStop(0, rgba(anchor.color, .19)); gradient.addColorStop(.48, rgba(anchor.color, .075)); gradient.addColorStop(1, rgba(anchor.color, 0));
     ctx.fillStyle = gradient; ctx.beginPath(); ctx.arc(0, 0, r * pulse, 0, Math.PI * 2); ctx.fill();
-    ctx.strokeStyle = rgba(anchor.color, .42); ctx.lineWidth = 1; ctx.setLineDash([4, 7]);
+    ctx.strokeStyle = rgba(anchor.color, .48); ctx.lineWidth = 1; ctx.setLineDash([3, 8]);
     ctx.beginPath(); ctx.arc(0, 0, r * .72 * pulse, 0, Math.PI * 2); ctx.stroke(); ctx.restore();
   }
 }
@@ -175,42 +175,59 @@ function drawBuildings() {
     for (let i = 0; i < base.length - 1; i++) {
       const next = i + 1;
       ctx.beginPath(); ctx.moveTo(base[i].x, base[i].y); ctx.lineTo(base[next].x, base[next].y); ctx.lineTo(roof[next].x, roof[next].y); ctx.lineTo(roof[i].x, roof[i].y); ctx.closePath();
-      ctx.fillStyle = anchor ? rgba(anchor.color, .32) : palette.side; ctx.fill();
-      ctx.strokeStyle = "rgba(16,18,24,.45)"; ctx.lineWidth = .6; ctx.stroke();
+      ctx.fillStyle = anchor ? rgba(anchor.color, .28) : palette.side; ctx.fill();
+      ctx.strokeStyle = "rgba(36,35,31,.38)"; ctx.lineWidth = .6; ctx.stroke();
     }
     ctx.beginPath(); roof.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)); ctx.closePath();
-    ctx.fillStyle = anchor ? anchor.color : (b.name ? palette.roof : palette.roofDim); ctx.globalAlpha = anchor ? .92 : .78; ctx.fill(); ctx.globalAlpha = 1;
-    ctx.strokeStyle = anchor ? rgba(anchor.color, 1) : "rgba(16,18,24,.55)"; ctx.lineWidth = anchor ? 1.25 : .65; ctx.stroke();
+    ctx.fillStyle = anchor ? rgba(anchor.color, .78) : (b.name ? palette.roof : palette.roofDim); ctx.globalAlpha = b.name ? 1 : .86; ctx.fill(); ctx.globalAlpha = 1;
+    ctx.strokeStyle = anchor ? rgba(anchor.color, .95) : "rgba(36,35,31,.58)"; ctx.lineWidth = anchor ? 1.25 : .65; ctx.stroke();
     renderedBuildings.push({ building: b, roof, base });
   }
 }
 function drawLabels() {
+  if (canvas.clientWidth < 560) return;
   const small = canvas.clientWidth < 760;
   for (const b of labelBuildings) {
-    if (small && !["Avery Hall", "Low Memorial Library", "Butler Library"].includes(b.name)) continue;
+    if (small && !["Avery Hall", "Low Memorial Library"].includes(b.name)) continue;
     const p = project(b.center, b.height), anchor = anchorForBuilding(b);
     const label = b.name.replace(" Memorial", "").toUpperCase();
     ctx.font = "500 9px Courier New"; const width = ctx.measureText(label).width + 10;
     const lx = p.x + 12, ly = p.y - 13;
-    ctx.strokeStyle = anchor ? anchor.color : "rgba(238,233,220,.55)"; ctx.lineWidth = .7;
+    ctx.strokeStyle = anchor ? anchor.color : "rgba(36,35,31,.45)"; ctx.lineWidth = .7;
     ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(lx, ly + 3); ctx.stroke();
-    ctx.fillStyle = "rgba(16,18,24,.84)"; ctx.fillRect(lx - 3, ly - 8, width, 14);
-    ctx.fillStyle = anchor ? anchor.color : palette.roof; ctx.fillText(label, lx + 2, ly + 2);
+    ctx.fillStyle = "rgba(248,245,237,.9)"; ctx.fillRect(lx - 3, ly - 8, width, 14);
+    ctx.fillStyle = palette.ink; ctx.fillText(label, lx + 2, ly + 2);
   }
 }
+function drawAttentionTethers() {
+  const body = building("Avery Hall"), origin = project(body.center, body.height + 7);
+  const selectedValue = document.querySelector("#object-select").value;
+  const selectedId = selectedValue.startsWith("thought:") ? selectedValue.split(":")[1] : "";
+  thoughts.forEach((t, index) => {
+    const end = project(t, 8), anchor = anchors.find(a => a.id === t.targetId), selected = t.id === selectedId;
+    const bend = 22 + index * 2;
+    ctx.beginPath(); ctx.moveTo(origin.x, origin.y);
+    ctx.bezierCurveTo(origin.x + (end.x - origin.x) * .34, origin.y - bend, origin.x + (end.x - origin.x) * .72, end.y - bend, end.x, end.y);
+    ctx.strokeStyle = rgba(anchor.color, selected ? .9 : .28); ctx.lineWidth = selected ? 2.2 : .9;
+    ctx.setLineDash(selected ? [] : [2, 4]); ctx.stroke(); ctx.setLineDash([]);
+  });
+  ctx.strokeStyle = palette.ink; ctx.lineWidth = 1.2;
+  ctx.beginPath(); ctx.arc(origin.x, origin.y, 6, 0, Math.PI * 2); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(origin.x - 10, origin.y); ctx.lineTo(origin.x + 10, origin.y); ctx.moveTo(origin.x, origin.y - 10); ctx.lineTo(origin.x, origin.y + 10); ctx.stroke();
+  ctx.font = "700 8px Courier New"; ctx.fillStyle = palette.ink; ctx.fillText("BODY / AVERY", origin.x + 12, origin.y - 9);
+}
 function drawThoughts() {
+  const selectedValue = document.querySelector("#object-select").value;
+  const selectedId = selectedValue.startsWith("thought:") ? selectedValue.split(":")[1] : "";
   for (const t of thoughts) {
-    const anchor = anchors.find(a => a.id === t.targetId), p = project(t, 8 + Math.sin(elapsed * .003 + t.phase) * 4);
-    if (t.history.length > 1) {
-      ctx.beginPath(); t.history.forEach((h, i) => { const s = project(h, 5); i ? ctx.lineTo(s.x, s.y) : ctx.moveTo(s.x, s.y); });
-      ctx.strokeStyle = rgba(anchor.color, .22); ctx.lineWidth = 1.2; ctx.stroke();
+    const anchor = anchors.find(a => a.id === t.targetId), p = project(t, 8 + Math.sin(elapsed * .003 + t.phase) * 3), selected = t.id === selectedId;
+    ctx.fillStyle = anchor.color; ctx.strokeStyle = palette.ink; ctx.lineWidth = selected ? 1.5 : .8;
+    ctx.beginPath(); ctx.arc(p.x, p.y, selected ? 5 : 3, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    if (selected) {
+      ctx.font = "700 8px Courier New"; const width = ctx.measureText(t.name.toUpperCase()).width + 12;
+      ctx.fillStyle = "rgba(248,245,237,.94)"; ctx.fillRect(p.x + 9, p.y - 16, width, 15);
+      ctx.fillStyle = palette.ink; ctx.fillText(t.name.toUpperCase(), p.x + 15, p.y - 6);
     }
-    const glow = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, 14);
-    glow.addColorStop(0, rgba(anchor.color, .8)); glow.addColorStop(1, rgba(anchor.color, 0));
-    ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(p.x, p.y, 14, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = palette.roof; ctx.strokeStyle = anchor.color; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.arc(p.x, p.y, 3.4, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-    ctx.font = "500 8px Courier New"; ctx.fillStyle = "rgba(238,233,220,.82)"; ctx.fillText(t.name.toUpperCase(), p.x + 8, p.y - 7);
   }
 }
 function drawSelected() {
@@ -223,7 +240,7 @@ function render(now) {
   const dt = Math.min(now - lastFrame, 35); lastFrame = now;
   if (playing) { elapsed += dt; updateThoughts(dt); }
   ctx.clearRect(0, 0, canvas.clientWidth, canvas.clientHeight);
-  drawGrid(); drawGrounds(); drawRoutes(); drawFields(); drawBuildings(); drawThoughts(); drawLabels(); drawSelected();
+  drawGrid(); drawGrounds(); drawRoutes(); drawFields(); drawBuildings(); drawLabels(); drawAttentionTethers(); drawThoughts(); drawSelected();
   updateLiveResults(); updateClock(); requestAnimationFrame(render);
 }
 
@@ -284,6 +301,14 @@ function updateLiveResults() {
     const info = describePoint(ref), label = ref.name || anchors.find(a => a.point === ref)?.name || "landmark";
     document.querySelector("#object-result").innerHTML = `<strong>${info.title}</strong>${label} · ${coordinateText(ref)}<br><small>${info.detail}</small>`;
   }
+  const trackedValue = document.querySelector("#object-select").value;
+  if (trackedValue.startsWith("thought:")) {
+    const tracked = thoughts.find(t => t.id === trackedValue.split(":")[1]);
+    if (tracked) {
+      const pull = anchors.find(a => a.id === tracked.targetId), fromBody = distance(tracked, building("Avery Hall").center);
+      document.querySelector("#live-sentence").textContent = `Right now, “${tracked.name}” is ${Math.round(fromBody)} m from my body, being pulled toward ${pull.note}.`;
+    }
+  }
   const thought = thoughts.find(t => t.id === document.querySelector("#occupant-select").value), anchor = anchors.find(a => a.id === document.querySelector("#anchor-select").value);
   if (thought && anchor) {
     const dx = thought.x - anchor.point.x, dy = thought.y - anchor.point.y;
@@ -322,7 +347,7 @@ document.querySelectorAll(".tab").forEach(tab => tab.addEventListener("click", (
   document.querySelectorAll(".tab").forEach(t => { t.classList.toggle("active", t === tab); t.setAttribute("aria-selected", t === tab ? "true" : "false"); });
   document.querySelectorAll(".view").forEach(v => v.classList.toggle("active", v.dataset.view === tab.dataset.tab));
 }));
-document.querySelector("#play").addEventListener("click", event => { playing = !playing; event.currentTarget.textContent = playing ? "PAUSE THOUGHTS" : "RESUME THOUGHTS"; });
+document.querySelector("#play").addEventListener("click", event => { playing = !playing; event.currentTarget.textContent = playing ? "pause" : "resume"; });
 document.querySelector("#add").addEventListener("click", () => { const used = new Set(thoughts.map(t => t.name)), name = extraNames.find(n => !used.has(n)) || `thought ${thoughts.length + 1}`, target = anchors[Math.floor(Math.random() * anchors.length)]; thoughts.push(makeThought(name, target.id, (Math.random() - .5) * 80, (Math.random() - .5) * 80)); fillSelects(); });
 document.querySelector("#rotate-left").addEventListener("click", () => camera.angle -= .16);
 document.querySelector("#rotate-right").addEventListener("click", () => camera.angle += .16);

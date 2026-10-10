@@ -1,6 +1,8 @@
-# Where My Attention Goes — Campus After Dark
+# Where My Attention Goes
 
-An interactive 2.5D model of Columbia University's Morningside campus. The architectural layer uses current OpenStreetMap building footprints, paths, streets, names, and available height data. Over that accurate base, a second emotional geography shows the competing forces of a late studio night: the deadline at Avery Hall, research at Butler Library, food at John Jay, the way home at the 116th Street subway, and one good idea near Low Library.
+At 11:47 PM, my body is in Avery Hall, but my attention is not. This project maps the distance between the two.
+
+The interactive 2.5D model uses current OpenStreetMap building footprints, paths, streets, names, and available height data for Columbia University's Morningside campus. Every moving thought remains tethered to a fixed body marker at Avery. The other end drifts toward five competing destinations: the deadline at Avery Hall, research at Butler Library, food at John Jay, the way home at the 116th Street subway, and one good idea near Low Library.
 
 Moving thoughts migrate between those attraction fields. The project keeps the four location queries from the workshop visible and testable:
 
