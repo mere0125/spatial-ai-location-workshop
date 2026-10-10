@@ -1,4 +1,4 @@
-# Campus After Dark — An Attention Atlas
+# Where My Attention Goes — Campus After Dark
 
 An interactive 2.5D model of Columbia University's Morningside campus. The architectural layer uses current OpenStreetMap building footprints, paths, streets, names, and available height data. Over that accurate base, a second emotional geography shows the competing forces of a late studio night: the deadline at Avery Hall, research at Butler Library, food at John Jay, the way home at the 116th Street subway, and one good idea near Low Library.
 
