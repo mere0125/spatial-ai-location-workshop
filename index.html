@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <meta name="description" content="Where My Attention Goes — a spatial model of divided attention during one studio night." />
     <title>Where My Attention Goes</title>
-    <link rel="stylesheet" href="styles.css?v=20261010-4" />
+    <link rel="stylesheet" href="styles.css?v=20261022-2" />
   </head>
   <body>
     <main class="atlas">
@@ -13,7 +13,7 @@
         <p class="kicker">SPATIAL AI · LOCATION / OCCUPANCY</p>
         <h1>Where my<br /><em>attention</em><br />goes</h1>
         <p class="premise"><strong>11:47 PM.</strong><br />My body is in Avery.<br />My attention is not.</p>
-        <p class="explanation">Each line begins at my desk. The other end is whatever is currently pulling my mind away.</p>
+        <p class="explanation">A small atlas of one late studio night: body, sight and thought do not occupy the same place.</p>
 
         <div class="body-key"><span></span><p><b>BODY / ORIGIN</b><br />Avery Hall, GSAPP studio</p></div>
 
@@ -26,6 +26,8 @@
         </section>
 
         <p id="live-sentence" class="live-sentence" aria-live="polite">Right now, “section model” is being pulled toward the deadline.</p>
+
+        <p class="signature">MERE CUI<br /><span>one-person study · fall 2026</span></p>
 
       </aside>
 
@@ -61,7 +63,7 @@
 
       <section class="instrument" aria-label="Location query instrument">
         <header>
-          <p class="kicker">FOUR QUESTIONS ABOUT LOCATION</p>
+          <p class="kicker">LOCATION + DISTANCE</p>
           <h2>Ask the map</h2>
         </header>
 
@@ -71,6 +73,7 @@
             <button class="tab" data-tab="occupancy" role="tab" aria-selected="false"><b>02</b> What is here?</button>
             <button class="tab" data-tab="frame" role="tab" aria-selected="false"><b>03</b> Where is it from there?</button>
             <button class="tab" data-tab="description" role="tab" aria-selected="false"><b>04</b> Find the place I mean</button>
+            <button class="tab" data-tab="distance" role="tab" aria-selected="false"><b>05</b> Compare two distances</button>
           </div>
 
           <div class="view active" data-view="object">
@@ -104,10 +107,34 @@
             </div>
             <div id="description-result" class="result" aria-live="polite"></div>
           </div>
+
+          <div class="view distance-view" data-view="distance">
+            <div class="compare-inputs">
+              <label>A<select id="compare-a"></select></label>
+              <label>B<select id="compare-b"></select></label>
+              <button id="contrast-example" type="button">find the contradiction →</button>
+            </div>
+
+            <div class="metric-sheet" aria-live="polite">
+              <div class="metric-line isovist-line">
+                <span class="metric-number">I</span>
+                <div><small>ISOVIST DISTANCE</small><strong id="isovist-value">—</strong><p>different visible cells</p></div>
+                <i><b id="isovist-bar"></b></i>
+              </div>
+              <div class="metric-line attention-line">
+                <span class="metric-number">A</span>
+                <div><small>ATTENTION DISTANCE</small><strong id="attention-value">—</strong><p>minimum attention work</p></div>
+                <i><b id="attention-bar"></b></i>
+              </div>
+              <div class="attention-key" id="attention-key"></div>
+              <p id="distance-reading" class="distance-reading">Choose two locations or occupants.</p>
+              <small class="metric-method">I / Jaccard difference of blocked sightlines on an OSM grid &nbsp; A / earth-mover distance between authored attention fields</small>
+            </div>
+          </div>
         </div>
       </section>
     </main>
-    <script src="campus-data.js?v=20261010-4"></script>
-    <script src="app.js?v=20261010-4"></script>
+    <script src="campus-data.js?v=20261022-2"></script>
+    <script src="app.js?v=20261022-2"></script>
   </body>
 </html>

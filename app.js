@@ -13,7 +13,11 @@ function centerOf(points) {
   const usable = points.length > 1 && points[0][0] === points.at(-1)[0] && points[0][1] === points.at(-1)[1] ? points.slice(0, -1) : points;
   return { x: usable.reduce((s, p) => s + p[0], 0) / usable.length, y: usable.reduce((s, p) => s + p[1], 0) / usable.length };
 }
-data.buildings.forEach(b => b.center = centerOf(b.points));
+data.buildings.forEach(b => {
+  b.center = centerOf(b.points);
+  const xs = b.points.map(point => point[0]), ys = b.points.map(point => point[1]);
+  b.bounds = { minX: Math.min(...xs), maxX: Math.max(...xs), minY: Math.min(...ys), maxY: Math.max(...ys) };
+});
 
 function building(name) {
   const result = namedBuildings.get(name);
@@ -42,7 +46,7 @@ const thoughtSeeds = [
   ["section model", "studio", -26, 34], ["one more rendering", "studio", 42, -20],
   ["citation I forgot", "research", -18, -24], ["noodles", "food", 32, 28],
   ["a better entrance", "idea", -34, 18],
-  ["email professor", "studio", 55, 42], ["call home", "exit", -22, 22],
+  ["email professor", "studio", 245, -65], ["call home", "exit", -22, 22],
 ];
 const extraNames = ["missing stair", "coffee first", "change the section", "save the file", "tomorrow's critique", "tiny breakthrough"];
 let thoughts = [];
@@ -52,6 +56,9 @@ let elapsed = 0;
 let lastFrame = performance.now();
 let renderedBuildings = [];
 let selectedPoint = null;
+let visibilitySamples = null;
+let comparisonLastUpdate = 0;
+let comparisonResult = null;
 
 const camera = { angle: -0.37, zoom: 1.05, cx: 0, cy: 0 };
 const pointer = { down: false, x: 0, y: 0, moved: 0, startAngle: 0 };
@@ -116,6 +123,126 @@ function rgba(hex, alpha) {
   return `rgba(${n >> 16},${n >> 8 & 255},${n & 255},${alpha})`;
 }
 
+function cross(a, b) { return a.x * b.y - a.y * b.x; }
+function segmentHitParameter(a, b, c, d) {
+  const r = { x: b.x - a.x, y: b.y - a.y }, s = { x: d.x - c.x, y: d.y - c.y };
+  const denominator = cross(r, s);
+  if (Math.abs(denominator) < 1e-8) return null;
+  const offset = { x: c.x - a.x, y: c.y - a.y };
+  const t = cross(offset, s) / denominator, u = cross(offset, r) / denominator;
+  return t > .001 && t < .999 && u >= 0 && u <= 1 ? t : null;
+}
+function containingBuilding(point) {
+  return data.buildings.find(b => point.x >= b.bounds.minX && point.x <= b.bounds.maxX && point.y >= b.bounds.minY && point.y <= b.bounds.maxY && pointInPolygon(point, b.points));
+}
+function segmentBlocked(origin, target) {
+  const own = containingBuilding(origin);
+  const minX = Math.min(origin.x, target.x), maxX = Math.max(origin.x, target.x), minY = Math.min(origin.y, target.y), maxY = Math.max(origin.y, target.y);
+  for (const b of data.buildings) {
+    if (b === own || b.bounds.maxX < minX || b.bounds.minX > maxX || b.bounds.maxY < minY || b.bounds.minY > maxY) continue;
+    for (let i = 0; i < b.points.length - 1; i++) {
+      const c = { x: b.points[i][0], y: b.points[i][1] }, d = { x: b.points[i + 1][0], y: b.points[i + 1][1] };
+      if (segmentHitParameter(origin, target, c, d) !== null) return true;
+    }
+  }
+  return false;
+}
+function buildVisibilitySamples() {
+  if (visibilitySamples) return visibilitySamples;
+  const all = data.buildings.flatMap(b => b.points);
+  const xs = all.map(point => point[0]), ys = all.map(point => point[1]);
+  const minX = Math.ceil(Math.min(...xs) / 36) * 36, maxX = Math.floor(Math.max(...xs) / 36) * 36;
+  const minY = Math.ceil(Math.min(...ys) / 36) * 36, maxY = Math.floor(Math.max(...ys) / 36) * 36;
+  visibilitySamples = [];
+  for (let x = minX; x <= maxX; x += 36) {
+    for (let y = minY; y <= maxY; y += 36) {
+      const point = { x, y };
+      if (!containingBuilding(point)) visibilitySamples.push(point);
+    }
+  }
+  return visibilitySamples;
+}
+function visibilityProfile(point) {
+  return buildVisibilitySamples().map(sample => distance(point, sample) <= 270 && !segmentBlocked(point, sample));
+}
+function rayDistance(origin, angle, maximum = 230) {
+  const direction = { x: Math.cos(angle), y: Math.sin(angle) }, own = containingBuilding(origin);
+  let nearest = maximum;
+  for (const b of data.buildings) {
+    if (b === own) continue;
+    for (let i = 0; i < b.points.length - 1; i++) {
+      const a = { x: b.points[i][0], y: b.points[i][1] }, edge = { x: b.points[i + 1][0] - a.x, y: b.points[i + 1][1] - a.y };
+      const denominator = cross(direction, edge);
+      if (Math.abs(denominator) < 1e-8) continue;
+      const offset = { x: a.x - origin.x, y: a.y - origin.y };
+      const t = cross(offset, edge) / denominator, u = cross(offset, direction) / denominator;
+      if (t > .5 && t < nearest && u >= 0 && u <= 1) nearest = t;
+    }
+  }
+  return nearest;
+}
+function visibilityPolygon(point) {
+  return Array.from({ length: 72 }, (_, index) => {
+    const angle = index / 72 * Math.PI * 2, radius = rayDistance(point, angle);
+    return { x: point.x + Math.cos(angle) * radius, y: point.y + Math.sin(angle) * radius };
+  });
+}
+function attentionProfile(referent) {
+  const weights = anchors.map(anchor => .18 * Math.exp(-distance(referent.point, anchor.point) / 145));
+  const targetIndex = anchors.findIndex(anchor => anchor.id === referent.targetId || anchor.id === referent.anchorId);
+  if (targetIndex >= 0) weights[targetIndex] += 12;
+  const total = weights.reduce((sum, weight) => sum + weight, 0);
+  return weights.map(weight => weight / total);
+}
+function addFlowEdge(graph, from, to, capacity, cost) {
+  const forward = { to, capacity, cost, reverse: graph[to].length };
+  const reverse = { to: from, capacity: 0, cost: -cost, reverse: graph[from].length };
+  graph[from].push(forward); graph[to].push(reverse);
+}
+function attentionEarthMover(sourceWeights, targetWeights) {
+  const count = anchors.length, source = count * 2, sink = source + 1, graph = Array.from({ length: sink + 1 }, () => []);
+  sourceWeights.forEach((weight, index) => addFlowEdge(graph, source, index, weight, 0));
+  targetWeights.forEach((weight, index) => addFlowEdge(graph, count + index, sink, weight, 0));
+  for (let i = 0; i < count; i++) for (let j = 0; j < count; j++) addFlowEdge(graph, i, count + j, 1, distance(anchors[i].point, anchors[j].point));
+  let flow = 0, cost = 0;
+  while (flow < 1 - 1e-8) {
+    const dist = Array(graph.length).fill(Infinity), previousNode = Array(graph.length).fill(-1), previousEdge = Array(graph.length).fill(-1);
+    dist[source] = 0;
+    for (let pass = 0; pass < graph.length - 1; pass++) {
+      let changed = false;
+      for (let node = 0; node < graph.length; node++) {
+        if (!Number.isFinite(dist[node])) continue;
+        graph[node].forEach((edge, edgeIndex) => {
+          if (edge.capacity > 1e-9 && dist[node] + edge.cost < dist[edge.to] - 1e-9) {
+            dist[edge.to] = dist[node] + edge.cost; previousNode[edge.to] = node; previousEdge[edge.to] = edgeIndex; changed = true;
+          }
+        });
+      }
+      if (!changed) break;
+    }
+    if (previousNode[sink] < 0) break;
+    let amount = 1 - flow;
+    for (let node = sink; node !== source; node = previousNode[node]) amount = Math.min(amount, graph[previousNode[node]][previousEdge[node]].capacity);
+    for (let node = sink; node !== source; node = previousNode[node]) {
+      const parent = previousNode[node], edge = graph[parent][previousEdge[node]];
+      edge.capacity -= amount; graph[node][edge.reverse].capacity += amount;
+    }
+    flow += amount; cost += amount * dist[sink];
+  }
+  return cost;
+}
+const maximumAttentionDistance = Math.max(...anchors.flatMap(a => anchors.map(b => distance(a.point, b.point))));
+function comparisonReferent(value) {
+  const [kind, id] = value.split(":");
+  if (kind === "thought") {
+    const thought = thoughts.find(item => item.id === id);
+    return thought ? { name: thought.name, point: thought, targetId: thought.targetId, kind: "occupant" } : null;
+  }
+  const anchor = anchors.find(item => item.id === id);
+  return anchor ? { name: anchor.name, point: anchor.point, anchorId: anchor.id, kind: "location" } : null;
+}
+function distanceModeActive() { return document.querySelector('[data-view="distance"]')?.classList.contains("active"); }
+
 function resize() {
   const ratio = Math.min(devicePixelRatio || 1, 2);
   canvas.width = Math.round(canvas.clientWidth * ratio);
@@ -152,11 +279,12 @@ function drawFields() {
     const p = project(anchor.point), d = dimensions(), r = anchor.radius * d.base * camera.zoom;
     const pulse = 1 + Math.sin(elapsed * .0012 + anchors.indexOf(anchor)) * .07;
     ctx.save(); ctx.translate(p.x, p.y); ctx.scale(1, .52);
-    const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, r * pulse);
-    gradient.addColorStop(0, rgba(anchor.color, .19)); gradient.addColorStop(.48, rgba(anchor.color, .075)); gradient.addColorStop(1, rgba(anchor.color, 0));
-    ctx.fillStyle = gradient; ctx.beginPath(); ctx.arc(0, 0, r * pulse, 0, Math.PI * 2); ctx.fill();
-    ctx.strokeStyle = rgba(anchor.color, .48); ctx.lineWidth = 1; ctx.setLineDash([3, 8]);
-    ctx.beginPath(); ctx.arc(0, 0, r * .72 * pulse, 0, Math.PI * 2); ctx.stroke(); ctx.restore();
+    ctx.strokeStyle = rgba(anchor.color, .32); ctx.lineWidth = .75;
+    [0.38, 0.68, 1].forEach((ring, index) => {
+      ctx.setLineDash(index === 2 ? [2, 7] : []);
+      ctx.beginPath(); ctx.arc(0, 0, r * ring * pulse, 0, Math.PI * 2); ctx.stroke();
+    });
+    ctx.restore();
   }
 }
 function anchorForBuilding(b) {
@@ -216,6 +344,45 @@ function drawLabels() {
     ctx.fillStyle = palette.ink; ctx.fillText(label, lx + 2, ly + 2);
   }
 }
+function traceWorldPolygon(points, fill, stroke, dash = []) {
+  ctx.beginPath();
+  points.forEach((point, index) => {
+    const screen = project(point, 3);
+    index ? ctx.lineTo(screen.x, screen.y) : ctx.moveTo(screen.x, screen.y);
+  });
+  ctx.closePath();
+  ctx.fillStyle = fill; ctx.fill();
+  ctx.strokeStyle = stroke; ctx.lineWidth = 1.2; ctx.setLineDash(dash); ctx.stroke(); ctx.setLineDash([]);
+}
+function drawComparisonMark(referent, label, color, yOffset = 0) {
+  const p = project(referent.point, 10);
+  ctx.strokeStyle = color; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(p.x - 8, p.y + yOffset); ctx.lineTo(p.x + 8, p.y + yOffset); ctx.stroke();
+  ctx.fillStyle = "rgba(248,245,237,.92)"; ctx.fillRect(p.x + 11, p.y - 13 + yOffset, 96, 16);
+  ctx.fillStyle = palette.ink; ctx.font = "700 8px Courier New"; ctx.fillText(`${label} / ${referent.name.toUpperCase()}`.slice(0, 23), p.x + 15, p.y - 3 + yOffset);
+}
+function drawMetricComparison() {
+  if (!distanceModeActive() || !comparisonResult) return;
+  const result = comparisonResult;
+  ctx.save();
+  traceWorldPolygon(result.polygonA, rgba(palette.red, .075), rgba(palette.red, .72), [5, 5]);
+  traceWorldPolygon(result.polygonB, rgba(palette.blue, .065), rgba(palette.blue, .72), [1, 5]);
+  [result.a, result.b].forEach((referent, pairIndex) => {
+    const weights = pairIndex ? result.attentionB : result.attentionA;
+    const color = pairIndex ? palette.blue : palette.red;
+    anchors.forEach((anchor, anchorIndex) => {
+      const start = project(referent.point, 5), end = project(anchor.point, 5);
+      ctx.beginPath(); ctx.moveTo(start.x, start.y); ctx.lineTo(end.x, end.y);
+      ctx.strokeStyle = rgba(color, .16 + weights[anchorIndex] * .64);
+      ctx.lineWidth = .45 + weights[anchorIndex] * 3.5;
+      ctx.setLineDash(pairIndex ? [2, 5] : []); ctx.stroke();
+    });
+  });
+  ctx.setLineDash([]);
+  drawComparisonMark(result.a, "A", palette.red, -5);
+  drawComparisonMark(result.b, "B", palette.blue, 6);
+  ctx.restore();
+}
 function drawAttentionTethers() {
   const body = building("Avery Hall"), origin = project(body.center, body.height + 7);
   const selectedValue = document.querySelector("#object-select").value;
@@ -236,8 +403,8 @@ function drawThoughts() {
   const selectedValue = document.querySelector("#object-select").value;
   const selectedId = selectedValue.startsWith("thought:") ? selectedValue.split(":")[1] : "";
   for (const t of thoughts) {
-    const anchor = anchors.find(a => a.id === t.targetId), p = project(t, 8 + Math.sin(elapsed * .003 + t.phase) * 3), selected = t.id === selectedId;
-    ctx.strokeStyle = anchor.color; ctx.lineWidth = selected ? 3 : 2;
+    const anchor = anchors.find(a => a.id === t.targetId), p = project(t, 8 + Math.sin(elapsed * .003 + t.phase) * 3), selected = !distanceModeActive() && t.id === selectedId;
+    ctx.strokeStyle = distanceModeActive() ? rgba(anchor.color, .4) : anchor.color; ctx.lineWidth = selected ? 3 : distanceModeActive() ? 1 : 2;
     ctx.beginPath(); ctx.moveTo(p.x - (selected ? 7 : 4), p.y); ctx.lineTo(p.x + (selected ? 7 : 4), p.y); ctx.stroke();
     if (selected) {
       ctx.font = "700 8px Courier New"; const width = ctx.measureText(t.name.toUpperCase()).width + 12;
@@ -257,7 +424,12 @@ function render(now) {
   const dt = Math.min(now - lastFrame, 35); lastFrame = now;
   if (playing) { elapsed += dt; updateThoughts(dt); }
   ctx.clearRect(0, 0, canvas.clientWidth, canvas.clientHeight);
-  drawGrid(); drawGrounds(); drawRoutes(); drawFields(); drawBuildings(); drawLabels(); drawAttentionTethers(); drawThoughts(); drawSelected();
+  drawGrid(); drawGrounds(); drawRoutes(); drawFields(); drawBuildings();
+  if (distanceModeActive()) drawMetricComparison();
+  if (!distanceModeActive()) drawLabels();
+  if (!distanceModeActive()) drawAttentionTethers();
+  drawThoughts(); drawSelected();
+  if (distanceModeActive() && now - comparisonLastUpdate > 900) updateComparison();
   updateLiveResults(); updateClock(); requestAnimationFrame(render);
 }
 
@@ -274,7 +446,8 @@ function updateThoughts(dt) {
     const mag = Math.hypot(t.vx, t.vy), cap = 1.25; if (mag > cap) { t.vx = t.vx / mag * cap; t.vy = t.vy / mag * cap; }
     t.x += t.vx * dt / 16; t.y += t.vy * dt / 16;
     if (Math.random() < .012) { t.history.push({ x: t.x, y: t.y }); if (t.history.length > 18) t.history.shift(); }
-    if (distance(t, target.point) < 28 && Math.random() < .0004 * dt) t.targetId = anchors[Math.floor(Math.random() * anchors.length)].id;
+    // A thought may drift in space, but its semantic pull stays stable so the
+    // attention metric remains interpretable while the simulation runs.
   }
 }
 function updateClock() {
@@ -302,11 +475,53 @@ function describePoint(point) {
 function coordinateText(point) { return `${Math.abs(Math.round(point.x))} m ${point.x >= 0 ? "E" : "W"} / ${Math.abs(Math.round(point.y))} m ${point.y >= 0 ? "N" : "S"}`; }
 
 function fillSelects() {
-  const objectSelect = document.querySelector("#object-select"), occupantSelect = document.querySelector("#occupant-select"), oldObject = objectSelect.value, oldOccupant = occupantSelect.value;
+  const objectSelect = document.querySelector("#object-select"), occupantSelect = document.querySelector("#occupant-select"), compareA = document.querySelector("#compare-a"), compareB = document.querySelector("#compare-b");
+  const oldObject = objectSelect.value, oldOccupant = occupantSelect.value, oldA = compareA?.value, oldB = compareB?.value;
   objectSelect.innerHTML = `<optgroup label="moving thoughts">${thoughts.map(t => `<option value="thought:${t.id}">${t.name}</option>`).join("")}</optgroup><optgroup label="campus landmarks">${anchors.map(a => `<option value="anchor:${a.id}">${a.name}</option>`).join("")}</optgroup>`;
   occupantSelect.innerHTML = thoughts.map(t => `<option value="${t.id}">${t.name}</option>`).join("");
+  const compareOptions = `<optgroup label="occupants">${thoughts.map(t => `<option value="thought:${t.id}">${t.name}</option>`).join("")}</optgroup><optgroup label="locations">${anchors.map(a => `<option value="anchor:${a.id}">${a.name}</option>`).join("")}</optgroup>`;
+  if (compareA && compareB) {
+    compareA.innerHTML = compareOptions; compareB.innerHTML = compareOptions;
+    const section = thoughts.find(t => t.name === "section model"), email = thoughts.find(t => t.name === "email professor");
+    compareA.value = [...compareA.options].some(o => o.value === oldA) ? oldA : `thought:${section?.id}`;
+    compareB.value = [...compareB.options].some(o => o.value === oldB) ? oldB : `thought:${email?.id}`;
+  }
   if ([...objectSelect.options].some(o => o.value === oldObject)) objectSelect.value = oldObject;
   if ([...occupantSelect.options].some(o => o.value === oldOccupant)) occupantSelect.value = oldOccupant;
+}
+function classification(value) { return value < 18 ? "close" : value < 38 ? "between" : "far"; }
+function attentionStrip(weights) {
+  return weights.map((weight, index) => `<i title="${anchors[index].name}: ${Math.round(weight * 100)}%" style="width:${Math.max(1, weight * 100)}%;background:${anchors[index].color}"></i>`).join("");
+}
+function updateComparison(force = false) {
+  if (!force && !distanceModeActive()) return;
+  const a = comparisonReferent(document.querySelector("#compare-a")?.value || "");
+  const b = comparisonReferent(document.querySelector("#compare-b")?.value || "");
+  if (!a || !b) return;
+  const visibilityA = visibilityProfile(a.point), visibilityB = visibilityProfile(b.point);
+  const different = visibilityA.reduce((sum, visible, index) => sum + (visible !== visibilityB[index] ? 1 : 0), 0);
+  const visibleUnion = visibilityA.reduce((sum, visible, index) => sum + (visible || visibilityB[index] ? 1 : 0), 0);
+  const isovistPct = different / Math.max(1, visibleUnion) * 100;
+  const attentionA = attentionProfile(a), attentionB = attentionProfile(b);
+  const attentionCost = attentionEarthMover(attentionA, attentionB);
+  const attentionPct = attentionCost / maximumAttentionDistance * 100;
+  comparisonResult = { a, b, visibilityA, visibilityB, polygonA: visibilityPolygon(a.point), polygonB: visibilityPolygon(b.point), attentionA, attentionB, isovistPct, attentionPct, attentionCost, different, visibleUnion };
+  comparisonLastUpdate = performance.now();
+  document.querySelector("#isovist-value").textContent = `${Math.round(isovistPct)}%`;
+  document.querySelector(".isovist-line p").textContent = `${different} / ${visibleUnion} visible cells disagree`;
+  document.querySelector("#attention-value").textContent = `${Math.round(attentionCost)} a·m`;
+  document.querySelector(".attention-line p").textContent = `${Math.round(attentionPct)}% of campus maximum`;
+  document.querySelector("#isovist-bar").style.width = `${Math.min(100, isovistPct)}%`;
+  document.querySelector("#attention-bar").style.width = `${Math.min(100, attentionPct)}%`;
+  document.querySelector("#attention-key").innerHTML = `<div class="attention-row"><b>A</b><span>${attentionStrip(attentionA)}</span></div><div class="attention-row"><b>B</b><span>${attentionStrip(attentionB)}</span></div>`;
+  const sightClass = classification(isovistPct), attentionClass = classification(attentionPct);
+  const contradiction = sightClass !== attentionClass && (sightClass === "far" || attentionClass === "far") && (sightClass === "close" || attentionClass === "close");
+  const sentence = contradiction
+    ? sightClass === "far"
+      ? `<b>A contradiction:</b> far by sight, close by attention. Separate views; the same mental pull.`
+      : `<b>A contradiction:</b> close by sight, far by attention. Shared view; different mental pulls.`
+    : `These two are <b>${sightClass}</b> in visible space and <b>${attentionClass}</b> in attention space.`;
+  document.querySelector("#distance-reading").innerHTML = sentence;
 }
 function selectedReferent() {
   const value = document.querySelector("#object-select").value, [kind, id] = value.split(":");
@@ -378,6 +593,7 @@ function infer(text) {
 document.querySelectorAll(".tab").forEach(tab => tab.addEventListener("click", () => {
   document.querySelectorAll(".tab").forEach(t => { t.classList.toggle("active", t === tab); t.setAttribute("aria-selected", t === tab ? "true" : "false"); });
   document.querySelectorAll(".view").forEach(v => v.classList.toggle("active", v.dataset.view === tab.dataset.tab));
+  if (tab.dataset.tab === "distance") updateComparison(true);
 }));
 document.querySelector("#play").addEventListener("click", event => { playing = !playing; event.currentTarget.textContent = playing ? "pause" : "resume"; });
 document.querySelector("#add").addEventListener("click", () => { const used = new Set(thoughts.map(t => t.name)), name = extraNames.find(n => !used.has(n)) || `thought ${thoughts.length + 1}`, target = anchors[Math.floor(Math.random() * anchors.length)]; thoughts.push(makeThought(name, target.id, (Math.random() - .5) * 80, (Math.random() - .5) * 80)); fillSelects(); });
@@ -392,6 +608,15 @@ document.querySelector("#occupancy-query").addEventListener("click", () => inspe
 document.querySelector("#resolve").addEventListener("click", () => infer(document.querySelector("#description-input").value));
 document.querySelector("#description-input").addEventListener("keydown", event => { if (event.key === "Enter") infer(event.currentTarget.value); });
 document.querySelectorAll(".prompts button").forEach(button => button.addEventListener("click", () => { document.querySelector("#description-input").value = button.textContent; infer(button.textContent); }));
+document.querySelector("#compare-a").addEventListener("change", () => updateComparison(true));
+document.querySelector("#compare-b").addEventListener("change", () => updateComparison(true));
+document.querySelector("#contrast-example").addEventListener("click", () => {
+  const section = thoughts.find(t => t.name === "section model"), email = thoughts.find(t => t.name === "email professor");
+  if (!section || !email) return;
+  document.querySelector("#compare-a").value = `thought:${section.id}`;
+  document.querySelector("#compare-b").value = `thought:${email.id}`;
+  updateComparison(true);
+});
 
 canvas.addEventListener("wheel", event => { event.preventDefault(); camera.zoom = Math.max(.55, Math.min(2.3, camera.zoom * (event.deltaY > 0 ? .92 : 1.08))); }, { passive: false });
 canvas.addEventListener("pointerdown", event => { pointer.down = true; pointer.x = event.clientX; pointer.y = event.clientY; pointer.moved = 0; pointer.startAngle = camera.angle; canvas.setPointerCapture(event.pointerId); });
